@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace loxcli {
     class LoxCli {
@@ -15,7 +13,7 @@ namespace loxcli {
             Run(code);
 
             if (hadError || hadRuntimeError) {
-                Environment.Exit(1);
+                System.Environment.Exit(1);
             }
         }
 
@@ -32,14 +30,13 @@ namespace loxcli {
 
             Parser parser = new Parser(tokens);
 
-            Expr expression = parser.Parse();
+            List<Stmt> statements = parser.Parse();
 
             if(hadError) {
                 return;
             }
 
-            interpreter.Interpret(expression);
-
+            interpreter.Interpret(statements);
         }
 
         public static void Error(int line, string message) {

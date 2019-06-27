@@ -1,30 +1,27 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 
 namespace loxcli {
-    abstract class Expr {
-
+    public abstract class Expr {
         public abstract R Accept<R>(IExprVisitor<R> visitor);
     }
 
-    interface IExprVisitor<R> {
+    public interface IExprVisitor<R> {
         R VisitAsignExpr(Assign expr);
         R VisitBinaryExpr(Binary expr);
+        R VisitCallExpr(Call expr);
         R VisitGroupingExpr(Grouping expr);
         R VisitLiteralExpr(Literal expr);
+        R VisitLogicalExpr(Logical expr);
         R VisitUnaryExpr(Unary expr);
+        R VisitVariableExpr(Variable expr);
     }
 
-
-
-    class Assign : Expr {
-        public Token Token;
+    public class Assign : Expr {
+        public Token Name;
         public Expr Value;
 
-        public Assign(Token token, Expr value) {
-            Token = token;
+        public Assign(Token name, Expr value) {
+            Name = name;
             Value = value;
         }
 
@@ -33,7 +30,7 @@ namespace loxcli {
         }
     }
 
-    class Binary : Expr {
+    public class Binary : Expr {
         public Expr Left;
         public Token Operator;
         public Expr Right;
@@ -49,7 +46,24 @@ namespace loxcli {
         }
     }
 
-    class Grouping : Expr {
+    public class Call : Expr {
+        public Expr callee;
+        public Token paren;
+        public List<Expr> arguments;
+
+        public Call(Expr callee, Token paren, List<Expr> arguments) {
+            this.callee = callee;
+            this.paren = paren;
+            this.arguments = arguments;
+        }
+
+        public override R Accept<R>(IExprVisitor<R> visitor) {
+            return visitor.VisitCallExpr(this);
+        }
+    }
+
+
+public     class Grouping : Expr {
         public Expr Expression;
 
         public Grouping(Expr expression) {
@@ -61,7 +75,7 @@ namespace loxcli {
         }
     }
 
-    class Literal : Expr {
+public     class Literal : Expr {
         public object Value;
 
         public Literal(object value) {
@@ -73,7 +87,23 @@ namespace loxcli {
         }
     }
 
-    class Unary : Expr {
+ public    class Logical : Expr {
+        public Expr left;
+        public Token op;
+        public Expr right;
+
+        public Logical(Expr left, Token op, Expr right) {
+            this.left = left;
+            this.op = op;
+            this.right = right;
+        }
+
+        public override R Accept<R>(IExprVisitor<R> visitor) {
+            return visitor.VisitLogicalExpr(this);
+        }
+    }
+
+ public    class Unary : Expr {
         public Token Operator;
         public Expr Right;
 
@@ -84,6 +114,18 @@ namespace loxcli {
 
         public override R Accept<R>(IExprVisitor<R> visitor) {
             return visitor.VisitUnaryExpr(this);
+        }
+    }
+
+  public   class Variable : Expr {
+        public Token Name;
+
+        public Variable(Token name) {
+            Name = name;
+        }
+
+        public override R Accept<R>(IExprVisitor<R> visitor) {
+            return visitor.VisitVariableExpr(this);
         }
     }
 

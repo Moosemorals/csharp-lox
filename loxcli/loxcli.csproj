@@ -44,12 +44,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ASTPrinter.cs" />
+    <Compile Include="Environment.cs" />
     <Compile Include="Expr.cs" />
     <Compile Include="Interpreter.cs" />
     <Compile Include="Lox.cs" />
+    <Compile Include="LoxCallable.cs" />
     <Compile Include="Parser.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Scanner.cs" />
+    <Compile Include="Stmt.cs" />
     <Compile Include="Token.cs" />
     <Compile Include="TokenType.cs" />
   </ItemGroup>

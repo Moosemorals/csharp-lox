@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace loxcli {
     class Scanner {
@@ -49,6 +47,20 @@ namespace loxcli {
         private void ScanToken() {
             char c = Advance();
             switch (c) {
+                case '&':
+                    if (Match('&')) {
+                        AddToken(TokenType.AND);
+                    } else {
+                        LoxCli.Error(line, "Unexpected character");
+                    }
+                    break;
+                case '|':
+                    if (Match('|')) {
+                        AddToken(TokenType.OR);
+                    } else {
+                        LoxCli.Error(line, "Unexpected character");
+                    }
+                    break;
                 case '(': AddToken(TokenType.LEFT_PAREN); break;
                 case ')': AddToken(TokenType.RIGHT_PAREN); break;
                 case '{': AddToken(TokenType.LEFT_BRACE); break;

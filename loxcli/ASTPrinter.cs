@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 
 namespace loxcli {
@@ -18,6 +16,10 @@ namespace loxcli {
             return Parenthesize(expr.Operator.lexeme, expr.Left, expr.Right);
         }
 
+        public string VisitCallExpr(Call expr) {
+            return Parenthesize("call", expr.arguments.ToArray());
+        }
+
         public string VisitGroupingExpr(Grouping expr) {
             return Parenthesize("group", expr.Expression);
         }
@@ -30,8 +32,16 @@ namespace loxcli {
             return expr.Value.ToString();
         }
 
+        public string VisitLogicalExpr(Logical expr) {
+            return Parenthesize(expr.op.lexeme, expr.left, expr.right);
+        }
+
         public string VisitUnaryExpr(Unary expr) {
             return Parenthesize(expr.Operator.lexeme, expr.Right);
+        }
+
+        public string VisitVariableExpr(Variable expr) {
+            return expr.Name.lexeme;
         }
 
         private string Parenthesize(string name, params Expr[] terms) {
