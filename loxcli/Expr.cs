@@ -9,9 +9,12 @@ namespace loxcli {
         R VisitAsignExpr(Assign expr);
         R VisitBinaryExpr(Binary expr);
         R VisitCallExpr(Call expr);
+        R VisitGetExpr(Get expr);
         R VisitGroupingExpr(Grouping expr);
         R VisitLiteralExpr(Literal expr);
         R VisitLogicalExpr(Logical expr);
+        R VisitSetExpr(Set expr);
+        R VisitThisExpr(This @this);
         R VisitUnaryExpr(Unary expr);
         R VisitVariableExpr(Variable expr);
     }
@@ -62,8 +65,21 @@ namespace loxcli {
         }
     }
 
+    public class Get : Expr {
+        public Expr obj;
+        public Token name;
 
-public     class Grouping : Expr {
+        public Get(Expr obj, Token name) {
+            this.obj = obj;
+            this.name = name;
+        }
+
+        public override R Accept<R>(IExprVisitor<R> visitor) {
+            return visitor.VisitGetExpr(this);
+        }
+    }
+
+    public class Grouping : Expr {
         public Expr Expression;
 
         public Grouping(Expr expression) {
@@ -75,7 +91,7 @@ public     class Grouping : Expr {
         }
     }
 
-public     class Literal : Expr {
+    public class Literal : Expr {
         public object Value;
 
         public Literal(object value) {
@@ -87,7 +103,7 @@ public     class Literal : Expr {
         }
     }
 
- public    class Logical : Expr {
+    public class Logical : Expr {
         public Expr left;
         public Token op;
         public Expr right;
@@ -103,7 +119,35 @@ public     class Literal : Expr {
         }
     }
 
- public    class Unary : Expr {
+    public class Set : Expr {
+        public Expr obj;
+        public Token name;
+        public Expr value;
+
+        public Set(Expr obj, Token name, Expr value) {
+            this.obj = obj;
+            this.name = name;
+            this.value = value;
+        }
+
+        public override R Accept<R>(IExprVisitor<R> visitor) {
+            return visitor.VisitSetExpr(this);
+        }
+    }
+
+    public class This : Expr {
+        public Token keyword;
+
+        public This(Token keyword) {
+            this.keyword = keyword;
+        }
+
+        public override R Accept<R>(IExprVisitor<R> visitor) {
+            return visitor.VisitThisExpr(this);
+        }
+    }
+
+    public class Unary : Expr {
         public Token Operator;
         public Expr Right;
 
@@ -117,7 +161,7 @@ public     class Literal : Expr {
         }
     }
 
-  public   class Variable : Expr {
+    public class Variable : Expr {
         public Token Name;
 
         public Variable(Token name) {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 
 namespace loxcli {
-    class LoxCli {
+    class Lox {
         private static readonly Interpreter interpreter = new Interpreter();
         private static bool hadError = false;
         private static bool hadRuntimeError = false;
@@ -33,6 +33,13 @@ namespace loxcli {
             List<Stmt> statements = parser.Parse();
 
             if(hadError) {
+                return;
+            }
+
+            Resolver resolver = new Resolver(interpreter);
+            resolver.Resolve(statements);
+
+            if (hadError) {
                 return;
             }
 

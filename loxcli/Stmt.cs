@@ -7,11 +7,14 @@ namespace loxcli {
 
     public interface IStmtVisitor<R> {
         R VisitBlockStmt(Block Stmt);
-        R VisitPrintStmt(Print stmt);
+        R VisitClassStmt(Class Stmt);
         R VisitExpressionStmt(Expression stmt);
-        R VisitVarStmt(Var stmt);
+        R VisitFunctionStmt(Function function);
         R VisitIfStmt(If stmt);
+        R VisitPrintStmt(Print stmt);
+        R VisitReturnStmt(Return @return);
         R VisitWhileStmt(While stmt);
+        R VisitVarStmt(Var stmt);
     }
 
     public class Block : Stmt {
@@ -26,6 +29,19 @@ namespace loxcli {
         }
     }
 
+    public class Class : Stmt {
+        public Token name;
+        public List<Function> methods;
+
+        public Class(Token name, List<Function> methods) {
+            this.name = name;
+            this.methods = methods;
+        }
+        public override R Accept<R>(IStmtVisitor<R> visitor) {
+            return visitor.VisitClassStmt(this);
+        }
+    }
+
     public class Expression : Stmt {
         public Expr expression;
 
@@ -35,6 +51,22 @@ namespace loxcli {
 
         public override R Accept<R>(IStmtVisitor<R> visitor) {
             return visitor.VisitExpressionStmt(this);
+        }
+    }
+
+    public class Function : Stmt {
+        public Token name;
+        public List<Token> param;
+        public List<Stmt> body;
+
+        public Function(Token name, List<Token> param, List<Stmt> body) {
+            this.name = name;
+            this.param = param;
+            this.body = body;
+        }
+
+        public override R Accept<R>(IStmtVisitor<R> visitor) {
+            return visitor.VisitFunctionStmt(this);
         }
     }
 
@@ -63,6 +95,20 @@ namespace loxcli {
 
         public override R Accept<R>(IStmtVisitor<R> visitor) {
             return visitor.VisitPrintStmt(this);
+        }
+    }
+
+    public class Return : Stmt {
+        public Token keyword;
+        public Expr value;
+
+        public Return(Token keyword, Expr value) {
+            this.keyword = keyword;
+            this.value = value;
+        }
+
+        public override R Accept<R>(IStmtVisitor<R> visitor) {
+            return visitor.VisitReturnStmt(this);
         }
     }
 

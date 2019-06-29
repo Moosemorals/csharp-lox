@@ -51,14 +51,14 @@ namespace loxcli {
                     if (Match('&')) {
                         AddToken(TokenType.AND);
                     } else {
-                        LoxCli.Error(line, "Unexpected character");
+                        Lox.Error(line, "Unexpected character");
                     }
                     break;
                 case '|':
                     if (Match('|')) {
                         AddToken(TokenType.OR);
                     } else {
-                        LoxCli.Error(line, "Unexpected character");
+                        Lox.Error(line, "Unexpected character");
                     }
                     break;
                 case '(': AddToken(TokenType.LEFT_PAREN); break;
@@ -100,7 +100,7 @@ namespace loxcli {
                     } else if (IsAlpha(c)) {
                         ParseIdentifier();
                     } else {
-                        LoxCli.Error(line, "Unexpected character");
+                        Lox.Error(line, "Unexpected character");
                     }
                     break;
             }
@@ -144,7 +144,7 @@ namespace loxcli {
 
             // Handle unterminated strings
             if (IsAtEnd()) {
-                LoxCli.Error(line, "Unterminated string");
+                Lox.Error(line, "Unterminated string");
                 return;
             }
 

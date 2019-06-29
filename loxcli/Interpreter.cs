@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 
 namespace loxcli {
-
-
     public class Interpreter : IExprVisitor<object>, IStmtVisitor<object> {
 
         private class ClockFunc : ILoxCallable {
@@ -23,11 +21,12 @@ namespace loxcli {
         }
 
         internal readonly Environment globals = new Environment();
+        private readonly Dictionary<Expr, int> locals = new Dictionary<Expr, int>();
         private Environment environment;
 
         public Interpreter() {
             environment = globals;
-            globals.Define("clock",new ClockFunc());
+            globals.Define("clock", new ClockFunc());
         }
 
         public void Interpret(List<Stmt> statements) {
@@ -36,14 +35,20 @@ namespace loxcli {
                     Execute(s);
                 }
             } catch (RuntimeError error) {
-                LoxCli.RuntimeError(error);
+                Lox.RuntimeError(error);
             }
         }
 
         public object VisitAsignExpr(Assign expr) {
             object value = Evaluate(expr.Value);
 
-            environment.Assign(expr.Name, value);
+            if (locals.ContainsKey(expr)) {
+                int distance = locals[expr];
+                environment.AssignAt(distance, expr.Name, value);
+            } else {
+                globals.Assign(expr.Name, value);
+            }
+
             return value;
         }
 
@@ -115,6 +120,15 @@ namespace loxcli {
             return Evaluate(expr.Expression);
         }
 
+        public object VisitGetExpr(Get expr) {
+            object obj = Evaluate(expr.obj);
+            if (obj.GetType() == typeof(LoxInstance)) {
+                return ((LoxInstance)obj).Get(expr.name);
+            }
+
+            throw new RuntimeError(expr.name, "Only instances have properties.");
+        }
+
         public object VisitLiteralExpr(Literal expr) {
             return expr.Value;
         }
@@ -135,6 +149,22 @@ namespace loxcli {
             return Evaluate(expr.right);
         }
 
+        public object VisitSetExpr(Set expr) {
+            object obj = Evaluate(expr.obj);
+
+            if (obj.GetType() != typeof(LoxInstance)) {
+                throw new RuntimeError(expr.name, "Only instances have fields.");
+            }
+
+            object value = Evaluate(expr.value);
+            ((LoxInstance)obj).Set(expr.name, value);
+            return value;
+        }
+
+        public object VisitThisExpr(This expr) {
+            return LookUpVariable(expr.keyword, expr);
+        }
+
         public object VisitUnaryExpr(Unary expr) {
             object right = Evaluate(expr.Right);
 
@@ -150,7 +180,16 @@ namespace loxcli {
         }
 
         public object VisitVariableExpr(Variable expr) {
-            return environment.Get(expr.Name);
+            return LookUpVariable(expr.Name, expr);
+        }
+
+        private object LookUpVariable(Token name, Expr expr) {
+            if (locals.ContainsKey(expr)) {
+                int distance = locals[expr];
+                return environment.GetAt(distance, name.lexeme);
+            } else {
+                return globals.Get(name);
+            }
         }
 
         private void CheckNumberOperand(Token op, Object operand) {
@@ -203,7 +242,11 @@ namespace loxcli {
             stmt.Accept(this);
         }
 
-        private void ExecuteBlock(List<Stmt> statements, Environment environment) {
+        internal void Resolve(Expr expr, int depth) {
+            locals.Add(expr, depth);
+        }
+
+        internal void ExecuteBlock(List<Stmt> statements, Environment environment) {
             Environment previous = this.environment;
 
             try {
@@ -221,8 +264,29 @@ namespace loxcli {
             ExecuteBlock(stmt.statements, new Environment(environment));
             return null;
         }
+
+        public object VisitClassStmt(Class stmt) {
+            environment.Define(stmt.name.lexeme, null);
+
+            Dictionary<string, LoxFunction> methods = new Dictionary<string, LoxFunction>();
+            foreach (Function method in stmt.methods) {
+                LoxFunction function = new LoxFunction(method, environment, method.name.lexeme.Equals("init"));
+                methods.Add(method.name.lexeme, function);
+            }
+
+            LoxClass klass = new LoxClass(stmt.name.lexeme, methods);
+            environment.Assign(stmt.name, klass);
+            return null;
+        }
+
         public object VisitExpressionStmt(Expression stmt) {
             Evaluate(stmt.expression);
+            return null;
+        }
+
+        public object VisitFunctionStmt(Function stmt) {
+            LoxFunction function = new LoxFunction(stmt, environment, false);
+            environment.Define(stmt.name.lexeme, function);
             return null;
         }
 
@@ -239,6 +303,15 @@ namespace loxcli {
             object value = Evaluate(stmt.expression);
             Console.WriteLine(Stringify(value));
             return null;
+        }
+
+        public object VisitReturnStmt(Return stmt) {
+            object value = null;
+            if (stmt.value != null) {
+                value = Evaluate(stmt.value);
+            }
+
+            throw new ReturnEx(value);
         }
 
         public object VisitVarStmt(Var stmt) {
@@ -263,6 +336,14 @@ namespace loxcli {
         public Token token;
         public RuntimeError(Token token, String message) : base(message) {
             this.token = token;
+        }
+    }
+
+    class ReturnEx : Exception {
+        internal readonly object value;
+
+        internal ReturnEx(object value) : base() {
+            this.value = value;
         }
     }
 }

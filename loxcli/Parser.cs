@@ -26,6 +26,12 @@ namespace loxcli {
 
         private Stmt Declaration() {
             try {
+                if (Match(TokenType.CLASS)) {
+                    return ClassDeclaration();
+                }
+                if (Match(TokenType.FUN)) {
+                    return Function("function");
+                }
                 if (Match(TokenType.VAR)) {
                     return VarDeclaration();
                 }
@@ -34,6 +40,25 @@ namespace loxcli {
                 Synchronise();
                 return null;
             }
+        }
+
+        private Stmt ClassDeclaration() {
+            Token name = Consume(TokenType.IDENTIFIER, "Expect class name.");
+            Consume(TokenType.LEFT_BRACE, "Expect '{' before class body.");
+
+            List<Function> methods = new List<Function>();
+            while (!Check(TokenType.RIGHT_BRACE) && !IsAtEnd()) {
+                Function func = Function("method");
+
+                if (!methods.Any(f => f.name.lexeme == func.name.lexeme)) { 
+                    methods.Add(func);
+                } else {
+                    Lox.Error(func.name, "Duplicate method in class definition.");
+                }
+            }
+
+            Consume(TokenType.RIGHT_BRACE, "Expect '}' after class body.");
+            return new Class(name, methods);
         }
 
         private Stmt Statement() {
@@ -45,6 +70,9 @@ namespace loxcli {
             }
             if (Match(TokenType.PRINT)) {
                 return PrintStatement(); 
+            }
+            if (Match(TokenType.RETURN)) {
+                return ReturnStatement();
             }
             if (Match(TokenType.WHILE)) {
                 return WhileStatement();
@@ -97,6 +125,27 @@ namespace loxcli {
             return body;
         }
 
+        private Function Function(String kind) {
+            Token name = Consume(TokenType.IDENTIFIER, "Expect " + kind + " name.");
+            Consume(TokenType.LEFT_PAREN, "Expect '(' after " + kind + " name.");
+            List<Token> parameters = new List<Token>();
+            if (!Check(TokenType.RIGHT_PAREN)) {
+                do {
+                    if (parameters.Count >= 8) {
+                        Error(Peek(), "Cannot have more than 8 parameters");
+                    }
+
+                    parameters.Add(Consume(TokenType.IDENTIFIER, "Expect parameter name"));
+                } while (Match(TokenType.COMMA));
+            }
+
+            Consume(TokenType.RIGHT_PAREN, "Expect ')' after " + kind + " prameters");
+
+            Consume(TokenType.LEFT_BRACE, "Expect '{' before " + kind + " body.");
+            List<Stmt> body = Block();
+            return new Function(name, parameters, body);
+        }
+
         private Stmt IfStatement() {
             Consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.");
             Expr condition = Expression();
@@ -116,6 +165,17 @@ namespace loxcli {
             Expr value = Expression();
             Consume(TokenType.SEMICOLON, "Expect ';' after value");
             return new Print(value);
+        }
+
+        private Stmt ReturnStatement() {
+            Token keyword = Previous();
+            Expr value = null;
+            if (!Check(TokenType.SEMICOLON)) {
+                value = Expression();
+            }
+
+            Consume(TokenType.SEMICOLON, "Expect ';' after return value.");
+            return new Return(keyword, value);
         }
 
         private Stmt VarDeclaration() {
@@ -167,6 +227,9 @@ namespace loxcli {
                 if (expr.GetType() == typeof(Variable)) {
                     Token name = ((Variable)expr).Name;
                     return new Assign(name, value);
+                } else if (expr.GetType() == typeof(Get)) {
+                    Get get = (Get)expr;
+                    return new Set(get.obj, get.name, value);
                 }
 
                 Error(equals, "Invalid assignment target.");
@@ -275,6 +338,9 @@ namespace loxcli {
             while (true) {
                 if (Match(TokenType.LEFT_PAREN)) {
                     expr = FinishCall(expr);
+                } else if (Match(TokenType.DOT)) {
+                    Token name = Consume(TokenType.IDENTIFIER, "Expet property name after '.'.");
+                    expr = new Get(expr, name);                
                 } else {
                     break;
                 }
@@ -295,6 +361,9 @@ namespace loxcli {
             }
             if (Match(TokenType.STRING, TokenType.NUMBER)) { 
                 return new Literal(Previous().literal);
+            }
+            if (Match(TokenType.THIS)) {
+                return new This(Previous());
             }
             if (Match(TokenType.IDENTIFIER)) {
                 return new Variable(Previous());
@@ -353,7 +422,7 @@ namespace loxcli {
         }
 
         private ParseError Error(Token token, String message) {
-            LoxCli.Error(token, message);
+            Lox.Error(token, message);
             return new ParseError();
         }
 

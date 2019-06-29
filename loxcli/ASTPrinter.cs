@@ -20,6 +20,10 @@ namespace loxcli {
             return Parenthesize("call", expr.arguments.ToArray());
         }
 
+        public string VisitGetExpr(Get expr) {
+            throw new NotImplementedException();
+        }
+
         public string VisitGroupingExpr(Grouping expr) {
             return Parenthesize("group", expr.Expression);
         }
@@ -34,6 +38,14 @@ namespace loxcli {
 
         public string VisitLogicalExpr(Logical expr) {
             return Parenthesize(expr.op.lexeme, expr.left, expr.right);
+        }
+
+        public string VisitSetExpr(Set expr) {
+            throw new NotImplementedException();
+        }
+
+        public string VisitThisExpr(This @this) {
+            throw new NotImplementedException();
         }
 
         public string VisitUnaryExpr(Unary expr) {
