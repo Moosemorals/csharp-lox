@@ -6,6 +6,7 @@ namespace Lox.Lib
 {
     public enum OpCode : byte
     {
+        Constant,
         Return,
     }
 }

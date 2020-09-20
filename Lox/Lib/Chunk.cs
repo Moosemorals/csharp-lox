@@ -1,42 +1,49 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Cache;
 using System.Text;
 
 namespace Lox.Lib
 {
-    public class Chunk
-    {
+    public class Chunk : DynamicArray<byte>
+    { 
+        private readonly ValueArray constants;
+        private readonly IList<int> lines;
+
         public Chunk()
         {
             count = 0;
             capacity = 0;
-            code = null;
+            values = null;
+            lines = new List<int>();
+            constants = new ValueArray();
         }
 
-        public void AddByte(OpCode b)
+        public int Add(OpCode b, int line)
         {
-            AddByte((byte)b);
+            return Add((byte)b, line);
         }
 
-        public void AddByte(byte b)
+        public int Add(byte b, int line)
         {
-            if (capacity < count + 1) {
-                int oldCapacity = capacity;
-                capacity = GrowCapacity(oldCapacity);
-                code = GrowArray(code, oldCapacity, capacity);
-            }
-
-            code[count] = b;
-            count += 1; 
+            lines.Add(line);
+            return Add(b);
         }
 
-        public void Disassemble(TextWriter o, string name) 
+        public int AddConstant(Value v)
+        {
+           return  constants.Add(v);
+        }
+
+        #region Disassembler
+
+        public void Disassemble(TextWriter o, string name)
         {
             o.WriteLine("-- {0} --", name);
 
-            for (int offset =0; offset < count; ) {
+            for (int offset = 0; offset < count;) {
                 offset = DisassembleInstruction(o, offset);
             }
         }
@@ -47,14 +54,28 @@ namespace Lox.Lib
             return offset + 1;
         }
 
+        private int constantInstruction(TextWriter o, string name, int offset)
+        {
+            byte constant = values[offset + 1];
+            o.WriteLine("{0,-16} {1,4:X} '{2}'", name, constant, constants.values[constant].ToString());
+            return offset + 2;
+        }
+
         private int DisassembleInstruction(TextWriter o, int offset)
         {
             o.Write("{0:X4} ", offset);
+            if (offset > 0 && lines[offset] == lines[offset-1]) {
+                o.Write("   | ");
+            } else {
+                o.Write("{0,4} ", lines[offset]);
+            }
 
-            OpCode instruction = (OpCode)code[offset];
+            OpCode instruction = (OpCode)values[offset];
             switch (instruction) {
                 case OpCode.Return:
                     return SimpleInstruction(o, "OP_RETURN", offset);
+                case OpCode.Constant:
+                    return constantInstruction(o, "OP_CONSTANT", offset);
                 default:
                     o.Write("Unknown opcode");
                     return offset + 1;
@@ -62,22 +83,6 @@ namespace Lox.Lib
             }
         }
 
-        private int GrowCapacity(int cap)
-        {
-            return cap < 8 ? 8 : cap * 2;
-        }
-
-        private byte[] GrowArray(byte[] from, int oldCap, int newCap)
-        {
-            byte[] to = new byte[newCap];
-            if (from != null) {
-                Buffer.BlockCopy(from, 0, to, 0, oldCap);
-            }
-            return to;
-        }
-
-       public byte[] code;
-        int count;
-        int capacity;
+        #endregion
     }
 }
