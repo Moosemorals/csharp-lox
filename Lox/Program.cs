@@ -33,9 +33,16 @@ namespace Lox
 
         private static InterpretResult Interpret(TextWriter writer, string source)
         {
+            Chunk chunk = new Chunk();
+
             Compiler compiler = new Compiler();
-            compiler.Compile(writer, source);
-            return InterpretResult.OK;
+
+            if (!compiler.Compile(writer, source, chunk)) {
+                return InterpretResult.CompileError;
+            }
+
+            VM vm = new VM(writer);
+            return vm.Interpret(chunk); 
         }
 
         static void Main(string[] args)

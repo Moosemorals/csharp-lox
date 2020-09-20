@@ -32,8 +32,7 @@ namespace Lox.Lib
 
         public InterpretResult Interpret(Chunk c)
         {
-            chunk = c;
-
+            chunk = c; 
             ip = 0;
             return Run();
         }
