@@ -7,7 +7,7 @@ using Xunit;
 
 namespace Tests
 {
-    public class Chapter1
+    public class Chunk_Tests
     {
         [Fact]
         public void Chunk_AddByte()

@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Cache;
+using System.Reflection.Metadata;
 using System.Text;
 
 namespace Lox.Lib
 {
     public class Chunk : DynamicArray<byte>
-    { 
+    {
         private readonly ValueArray constants;
         private readonly IList<int> lines;
 
@@ -34,7 +35,12 @@ namespace Lox.Lib
 
         public int AddConstant(Value v)
         {
-           return  constants.Add(v);
+            return constants.Add(v);
+        }
+
+        public Value GetConstant(byte index)
+        {
+            return constants.values[index];
         }
 
         #region Disassembler
@@ -54,17 +60,17 @@ namespace Lox.Lib
             return offset + 1;
         }
 
-        private int constantInstruction(TextWriter o, string name, int offset)
+        private int ConstantInstruction(TextWriter o, string name, int offset)
         {
             byte constant = values[offset + 1];
             o.WriteLine("{0,-16} {1,4:X} '{2}'", name, constant, constants.values[constant].ToString());
             return offset + 2;
         }
 
-        private int DisassembleInstruction(TextWriter o, int offset)
+        public int DisassembleInstruction(TextWriter o, int offset)
         {
             o.Write("{0:X4} ", offset);
-            if (offset > 0 && lines[offset] == lines[offset-1]) {
+            if (offset > 0 && lines[offset] == lines[offset - 1]) {
                 o.Write("   | ");
             } else {
                 o.Write("{0,4} ", lines[offset]);
@@ -72,10 +78,20 @@ namespace Lox.Lib
 
             OpCode instruction = (OpCode)values[offset];
             switch (instruction) {
+                case OpCode.Constant:
+                    return ConstantInstruction(o, "OP_CONSTANT", offset);
+                case OpCode.Add:
+                    return SimpleInstruction(o, "OP_ADD", offset);
+                case OpCode.Subtract:
+                    return SimpleInstruction(o, "OP_SUBTRACT", offset);
+                case OpCode.Multiply:
+                    return SimpleInstruction(o, "OP_MULTIPLY", offset);
+                case OpCode.Divide:
+                    return SimpleInstruction(o, "OP_DIVIDE", offset);
+                case OpCode.Negate:
+                    return SimpleInstruction(o, "OP_NEGATE", offset);
                 case OpCode.Return:
                     return SimpleInstruction(o, "OP_RETURN", offset);
-                case OpCode.Constant:
-                    return constantInstruction(o, "OP_CONSTANT", offset);
                 default:
                     o.Write("Unknown opcode");
                     return offset + 1;
