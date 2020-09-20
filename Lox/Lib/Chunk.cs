@@ -43,6 +43,11 @@ namespace Lox.Lib
             return constants.values[index];
         }
 
+        public int GetLine(int instruction)
+        {
+            return lines[instruction];
+        }
+
         #region Disassembler
 
         public void Disassemble(TextWriter o, string name)
@@ -80,6 +85,19 @@ namespace Lox.Lib
             switch (instruction) {
                 case OpCode.Constant:
                     return ConstantInstruction(o, "OP_CONSTANT", offset);
+                case OpCode.Nil:
+                    return SimpleInstruction(o, "OP_NIL", offset);
+                case OpCode.True:
+                    return SimpleInstruction(o, "OP_TRUE", offset);
+                case OpCode.False:
+                    return SimpleInstruction(o, "OP_FALSE", offset);
+                case OpCode.Equal:
+                    return SimpleInstruction(o, "OP_EQUALS", offset);
+                case OpCode.Greater:
+                    return SimpleInstruction(o, "OP_GREATER", offset);
+                case OpCode.Less:
+                    return SimpleInstruction(o, "OP_LESS", offset);
+
                 case OpCode.Add:
                     return SimpleInstruction(o, "OP_ADD", offset);
                 case OpCode.Subtract:
@@ -88,6 +106,8 @@ namespace Lox.Lib
                     return SimpleInstruction(o, "OP_MULTIPLY", offset);
                 case OpCode.Divide:
                     return SimpleInstruction(o, "OP_DIVIDE", offset);
+                case OpCode.Not:
+                    return SimpleInstruction(o, "OP_NOT", offset);
                 case OpCode.Negate:
                     return SimpleInstruction(o, "OP_NEGATE", offset);
                 case OpCode.Return:

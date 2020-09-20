@@ -25,29 +25,29 @@ namespace Lox.Lib
         {
             rules = new[] {
                 new ParseRule { Type = TokenType.And, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.Bang, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.BangEqual, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.Bang, Prefix = Unary, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.BangEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Equality },
                 new ParseRule { Type = TokenType.Class, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Comma, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Dot, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Else, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Eof, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Equal, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.EqualEqual, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.EqualEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Equality },
                 new ParseRule { Type = TokenType.Error, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.False, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.False, Prefix = Literal, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.For, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Fun, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.Greater, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.GreaterEqual, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.Greater, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
+                new ParseRule { Type = TokenType.GreaterEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
                 new ParseRule { Type = TokenType.Identifier, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.If, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.LeftBrace, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.LeftParen, Prefix = Grouping, Infix = null, Precidence=  Precidence.None },
-                new ParseRule { Type = TokenType.Less, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.LessEqual, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.Less, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
+                new ParseRule { Type = TokenType.LessEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
                 new ParseRule { Type = TokenType.Minus, Prefix = Unary, Infix = Binary, Precidence = Precidence.Term },
-                new ParseRule { Type = TokenType.Nil, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.Nil, Prefix = Literal, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Number, Prefix = Number, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Or, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Plus, Prefix = null, Infix = Binary, Precidence = Precidence.Term },
@@ -61,7 +61,7 @@ namespace Lox.Lib
                 new ParseRule { Type = TokenType.String, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Super, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.This, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.True, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.True, Prefix = Literal, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Var, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.While, Prefix = null, Infix = null, Precidence = Precidence.None },
             };
@@ -105,6 +105,13 @@ namespace Lox.Lib
             ParsePrecidence(rule.Precidence + 1);
 
             switch (operatorType) {
+                case TokenType.BangEqual: EmitBytes(OpCode.Equal, (byte)OpCode.Not); break;
+                case TokenType.EqualEqual: EmitByte(OpCode.Equal); break;
+                case TokenType.Greater: EmitByte(OpCode.Greater); break;
+                case TokenType.GreaterEqual: EmitBytes(OpCode.Less, (byte)OpCode.Not); break;
+                case TokenType.Less: EmitByte(OpCode.Less); break;
+                case TokenType.LessEqual: EmitBytes(OpCode.Greater, (byte)OpCode.Not); break;
+
                 case TokenType.Plus: EmitByte(OpCode.Add); break;
                 case TokenType.Minus: EmitByte(OpCode.Subtract); break;
                 case TokenType.Star: EmitByte(OpCode.Multiply); break;
@@ -171,7 +178,7 @@ namespace Lox.Lib
             ErrorAt(previous, message);
         }
 
-        void ErrorAt(Token token, string message)
+        private void ErrorAt(Token token, string message)
         {
             if (panicMode) {
                 return;
@@ -214,6 +221,17 @@ namespace Lox.Lib
             Consume(TokenType.RightParen, "Expect ')' after expression.");
         }
 
+        private void Literal()
+        {
+            switch (previous.Type) {
+                case TokenType.False: EmitByte(OpCode.False); break;
+                case TokenType.Nil: EmitByte(OpCode.Nil); break;
+                case TokenType.True: EmitByte(OpCode.True); break;
+                default:
+                    throw new Exception("Unreachable code reached");
+            }
+        }
+
         private byte MakeConstant(Value v)
         {
             int constant = CurrentChunk().AddConstant(v);
@@ -227,8 +245,8 @@ namespace Lox.Lib
 
         private void Number()
         {
-            Value v = new Value { V = double.Parse(previous.Lexeme) };
-            EmitConstant(v);
+            double value = double.Parse(previous.Lexeme);
+            EmitConstant(Value.Number(value));
         }
 
         private void ParsePrecidence(Precidence precidence)
@@ -256,6 +274,7 @@ namespace Lox.Lib
             ParsePrecidence(Precidence.Unary);
 
             switch (operatorType) {
+                case TokenType.Bang: EmitByte(OpCode.Not); break;
                 case TokenType.Minus: EmitByte(OpCode.Negate); break;
                 default:
                     throw new Exception("Unreachable code reached");
