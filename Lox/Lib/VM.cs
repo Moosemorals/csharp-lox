@@ -53,7 +53,7 @@ namespace Lox.Lib
                     case OpCode.Equal: {
                             Value b = Pop();
                             Value a = Pop();
-                            Push(Value.Bool(a.IsEqual(b))); 
+                            Push(Value.Bool(a.IsEqual(b)));
                             break;
                         }
                     case OpCode.Greater: {
@@ -77,13 +77,19 @@ namespace Lox.Lib
                             break;
                         }
                     case OpCode.Add: {
-                            if (!Peek(0).IsNumber || !Peek(1).IsNumber) {
-                                RuntimeError("Operands must be numbers");
+                            if (Peek(0).IsString && Peek(1).IsString) {
+                                ObjString b = Pop().AsString;
+                                ObjString a = Pop().AsString;
+                                Push(Value.Obj(ObjString.CopyString(a.Chars + b.Chars)));
+                            } else if (Peek(0).IsNumber && Peek(1).IsNumber) {
+                                double r = Pop().AsNumber;
+                                double l = Pop().AsNumber;
+                                Push(Value.Number(l + r));
+
+                            } else {
+                                RuntimeError("Operands must be two numbers or two strings");
                                 return InterpretResult.RuntimeError;
                             }
-                            double r = Pop().AsNumber;
-                            double l = Pop().AsNumber;
-                            Push(Value.Number(l + r));
                             break;
                         }
                     case OpCode.Subtract: {
@@ -151,7 +157,7 @@ namespace Lox.Lib
         private void RuntimeError(string format, params object[] args)
         {
             writer.WriteLine(format, args);
-            writer.WriteLine("[line %d] in script", chunk.GetLine(ip));
+            writer.WriteLine("[line {0}] in script", chunk.GetLine(ip));
             ResetStack();
         }
 

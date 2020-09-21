@@ -58,7 +58,7 @@ namespace Lox.Lib
                 new ParseRule { Type = TokenType.Semicolon, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Slash, Prefix = null, Infix = Binary, Precidence = Precidence.Factor },
                 new ParseRule { Type = TokenType.Star, Prefix = null, Infix = Binary, Precidence = Precidence.Factor },
-                new ParseRule { Type = TokenType.String, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.String, Prefix = String, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Super, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.This, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.True, Prefix = Literal, Infix = null, Precidence = Precidence.None },
@@ -265,6 +265,11 @@ namespace Lox.Lib
                 Action infixRule = GetRule(previous.Type).Infix;
                 infixRule();
             }
+        }
+
+        public void String()
+        {
+            EmitConstant(Value.Obj(ObjString.CopyString(previous.Lexeme[1..^1])));
         }
 
         private void Unary()

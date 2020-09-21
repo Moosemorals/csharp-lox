@@ -72,48 +72,48 @@ namespace Lox.Lib
             return offset + 2;
         }
 
-        public int DisassembleInstruction(TextWriter o, int offset)
+        public int DisassembleInstruction(TextWriter writer, int offset)
         {
-            o.Write("{0:X4} ", offset);
+            writer.Write("{0:X4} ", offset);
             if (offset > 0 && lines[offset] == lines[offset - 1]) {
-                o.Write("   | ");
+                writer.Write("   | ");
             } else {
-                o.Write("{0,4} ", lines[offset]);
+                writer.Write("{0,4} ", lines[offset]);
             }
 
             OpCode instruction = (OpCode)values[offset];
             switch (instruction) {
                 case OpCode.Constant:
-                    return ConstantInstruction(o, "OP_CONSTANT", offset);
+                    return ConstantInstruction(writer, "OP_CONSTANT", offset);
                 case OpCode.Nil:
-                    return SimpleInstruction(o, "OP_NIL", offset);
+                    return SimpleInstruction(writer, "OP_NIL", offset);
                 case OpCode.True:
-                    return SimpleInstruction(o, "OP_TRUE", offset);
+                    return SimpleInstruction(writer, "OP_TRUE", offset);
                 case OpCode.False:
-                    return SimpleInstruction(o, "OP_FALSE", offset);
+                    return SimpleInstruction(writer, "OP_FALSE", offset);
                 case OpCode.Equal:
-                    return SimpleInstruction(o, "OP_EQUALS", offset);
+                    return SimpleInstruction(writer, "OP_EQUALS", offset);
                 case OpCode.Greater:
-                    return SimpleInstruction(o, "OP_GREATER", offset);
+                    return SimpleInstruction(writer, "OP_GREATER", offset);
                 case OpCode.Less:
-                    return SimpleInstruction(o, "OP_LESS", offset);
+                    return SimpleInstruction(writer, "OP_LESS", offset);
 
                 case OpCode.Add:
-                    return SimpleInstruction(o, "OP_ADD", offset);
+                    return SimpleInstruction(writer, "OP_ADD", offset);
                 case OpCode.Subtract:
-                    return SimpleInstruction(o, "OP_SUBTRACT", offset);
+                    return SimpleInstruction(writer, "OP_SUBTRACT", offset);
                 case OpCode.Multiply:
-                    return SimpleInstruction(o, "OP_MULTIPLY", offset);
+                    return SimpleInstruction(writer, "OP_MULTIPLY", offset);
                 case OpCode.Divide:
-                    return SimpleInstruction(o, "OP_DIVIDE", offset);
+                    return SimpleInstruction(writer, "OP_DIVIDE", offset);
                 case OpCode.Not:
-                    return SimpleInstruction(o, "OP_NOT", offset);
+                    return SimpleInstruction(writer, "OP_NOT", offset);
                 case OpCode.Negate:
-                    return SimpleInstruction(o, "OP_NEGATE", offset);
+                    return SimpleInstruction(writer, "OP_NEGATE", offset);
                 case OpCode.Return:
-                    return SimpleInstruction(o, "OP_RETURN", offset);
+                    return SimpleInstruction(writer, "OP_RETURN", offset);
                 default:
-                    o.Write("Unknown opcode");
+                    writer.Write("Unknown opcode");
                     return offset + 1;
 
             }
