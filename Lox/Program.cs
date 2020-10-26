@@ -9,10 +9,12 @@ namespace Lox
     class Program
     {
 
+        private static VM vm;
+
         private static void Repl()
         {
             while (true) {
-                Console.Out.WriteLine("> ");
+                Console.Out.Write("> ");
 
                 string line = Console.In.ReadLine();
 
@@ -43,12 +45,13 @@ namespace Lox
 
             writer.WriteLine("---End of compile---");
 
-            VM vm = new VM(writer);
             return vm.Interpret(chunk); 
         }
 
         static void Main(string[] args)
         {
+
+            vm = new VM(Console.Out);
             if (args.Length == 0) {
                 Repl();
             } else if (args.Length == 1) {

@@ -10,6 +10,10 @@ namespace Lox.Lib
         Nil,
         True,
         False,
+        Pop,
+        GetGlobal,
+        DefineGlobal,
+        SetGlobal,
         Equal,
         Greater,
         Less,
@@ -19,6 +23,7 @@ namespace Lox.Lib
         Divide,
         Not,
         Negate,
+        Print,
         Return,
     }
 }

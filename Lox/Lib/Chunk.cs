@@ -91,13 +91,20 @@ namespace Lox.Lib
                     return SimpleInstruction(writer, "OP_TRUE", offset);
                 case OpCode.False:
                     return SimpleInstruction(writer, "OP_FALSE", offset);
+                case OpCode.Pop:
+                    return SimpleInstruction(writer, "OP_POP", offset);
+                case OpCode.GetGlobal:
+                    return ConstantInstruction(writer, "OP_GET_GLOBAL", offset);
+                case OpCode.DefineGlobal:
+                    return ConstantInstruction(writer, "OP_DEFINE_GLOBAL", offset);
+                case OpCode.SetGlobal:
+                    return ConstantInstruction(writer, "OP_SET_GLOBAL", offset);
                 case OpCode.Equal:
                     return SimpleInstruction(writer, "OP_EQUALS", offset);
                 case OpCode.Greater:
                     return SimpleInstruction(writer, "OP_GREATER", offset);
                 case OpCode.Less:
                     return SimpleInstruction(writer, "OP_LESS", offset);
-
                 case OpCode.Add:
                     return SimpleInstruction(writer, "OP_ADD", offset);
                 case OpCode.Subtract:
@@ -110,6 +117,8 @@ namespace Lox.Lib
                     return SimpleInstruction(writer, "OP_NOT", offset);
                 case OpCode.Negate:
                     return SimpleInstruction(writer, "OP_NEGATE", offset);
+                case OpCode.Print:
+                    return SimpleInstruction(writer, "OP_PRINT", offset);
                 case OpCode.Return:
                     return SimpleInstruction(writer, "OP_RETURN", offset);
                 default:

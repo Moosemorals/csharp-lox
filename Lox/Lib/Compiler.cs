@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq.Expressions;
 using System.Security.Principal;
 using System.Text;
+using System.Xml.Linq;
 
 namespace Lox.Lib
 {
@@ -40,7 +42,7 @@ namespace Lox.Lib
                 new ParseRule { Type = TokenType.Fun, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Greater, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
                 new ParseRule { Type = TokenType.GreaterEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
-                new ParseRule { Type = TokenType.Identifier, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.Identifier, Prefix = Variable, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.If, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.LeftBrace, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.LeftParen, Prefix = Grouping, Infix = null, Precidence=  Precidence.None },
@@ -76,8 +78,10 @@ namespace Lox.Lib
             compilingChunk = chunk;
 
             Advance();
-            Expression();
-            Consume(TokenType.Eof, "Expect end of expression.");
+
+            while (!Match(TokenType.Eof)) {
+                Declaration();
+            }
 
             EndCompiler();
 
@@ -97,7 +101,7 @@ namespace Lox.Lib
             }
         }
 
-        private void Binary()
+        private void Binary(bool canAssign)
         {
             TokenType operatorType = previous.Type;
 
@@ -121,6 +125,11 @@ namespace Lox.Lib
             }
         }
 
+        private bool Check(TokenType type)
+        {
+            return current.Type == type;
+        }
+
         private void Consume(TokenType type, string message)
         {
             if (current.Type == type) {
@@ -134,6 +143,24 @@ namespace Lox.Lib
         private Chunk CurrentChunk()
         {
             return compilingChunk;
+        }
+
+        private void Declaration()
+        {
+            if (Match(TokenType.Var)) {
+                VarDeclaration();
+            } else { 
+                Statement();
+            }
+
+            if (panicMode) {
+                Synchronize();
+            }
+        }
+
+        private void DefineVariable(byte global)
+        {
+            EmitBytes(OpCode.DefineGlobal, global);
         }
 
         private void EmitByte(byte b)
@@ -210,18 +237,30 @@ namespace Lox.Lib
             ParsePrecidence(Precidence.Assignment);
         }
 
+        private void ExpressionStatement()
+        {
+            Expression();
+            Consume(TokenType.Semicolon, "Expect ';' after expression.");
+            EmitByte(OpCode.Pop);
+        }
+
         private ParseRule GetRule(TokenType type)
         {
             return rules[(int)type];
         }
 
-        private void Grouping()
+        private void Grouping(bool canAssign)
         {
             Expression();
             Consume(TokenType.RightParen, "Expect ')' after expression.");
         }
 
-        private void Literal()
+        private byte IdentifierConstant(Token name)
+        {
+            return MakeConstant(Value.Obj(ObjString.CopyString(name.Lexeme)));
+        }
+
+        private void Literal(bool canAssign)
         {
             switch (previous.Type) {
                 case TokenType.False: EmitByte(OpCode.False); break;
@@ -229,6 +268,17 @@ namespace Lox.Lib
                 case TokenType.True: EmitByte(OpCode.True); break;
                 default:
                     throw new Exception("Unreachable code reached");
+            }
+        }
+
+        private void NamedVariable(Token name, bool canAssign)
+        {
+            byte arg = IdentifierConstant(name);
+            if (canAssign && Match(TokenType.Equal)) {
+                Expression();
+                EmitBytes(OpCode.SetGlobal, arg);
+            } else {
+                EmitBytes(OpCode.GetGlobal, arg);
             }
         }
 
@@ -243,7 +293,16 @@ namespace Lox.Lib
             return (byte)constant;
         }
 
-        private void Number()
+        private bool Match(TokenType type)
+        {
+            if (!Check(type)) {
+                return false;
+            }
+            Advance();
+            return true;
+        }
+
+        private void Number(bool canAssign)
         {
             double value = double.Parse(previous.Lexeme);
             EmitConstant(Value.Number(value));
@@ -252,27 +311,80 @@ namespace Lox.Lib
         private void ParsePrecidence(Precidence precidence)
         {
             Advance();
-            Action prefixRule = GetRule(previous.Type).Prefix;
+            Action<bool> prefixRule = GetRule(previous.Type).Prefix;
             if (prefixRule == null) {
                 Error("Expect expression");
                 return;
             }
 
-            prefixRule();
+            bool canAssign = precidence <= Precidence.Assignment;
+            prefixRule(canAssign);
 
             while (precidence < GetRule(current.Type).Precidence) {
                 Advance();
-                Action infixRule = GetRule(previous.Type).Infix;
-                infixRule();
+                Action<bool> infixRule = GetRule(previous.Type).Infix;
+                infixRule(canAssign);
+            }
+
+            if (canAssign && Match(TokenType.Equal)) {
+                Error("Invalid assignment target.");
             }
         }
 
-        public void String()
+        private byte ParseVariable(string errorMessage)
+        {
+            Consume(TokenType.Identifier, errorMessage);
+            return IdentifierConstant(previous);
+        }
+
+        private void PrintStatement()
+        {
+            Expression();
+            Consume(TokenType.Semicolon, "Expect ';' after value.");
+            EmitByte(OpCode.Print);
+        }
+
+        public void Statement()
+        {
+            if (Match(TokenType.Print)) {
+                PrintStatement();
+            } else {
+                ExpressionStatement();
+            }
+        }
+
+        private void String(bool canAssign)
         {
             EmitConstant(Value.Obj(ObjString.CopyString(previous.Lexeme[1..^1])));
         }
 
-        private void Unary()
+        private void Synchronize()
+        {
+            panicMode = false;
+
+            while (current.Type != TokenType.Eof) {
+                if (previous.Type == TokenType.Semicolon) {
+                    return;
+                }
+                switch (current.Type) {
+                    case TokenType.Class:
+                    case TokenType.Fun:
+                    case TokenType.Var:
+                    case TokenType.For:
+                    case TokenType.If:
+                    case TokenType.While:
+                    case TokenType.Print:
+                    case TokenType.Return:
+                        return;
+                    default:
+                        // do nothing
+                        break;
+                }
+                Advance();
+            }
+        }
+
+        private void Unary(bool canAssign)
         {
             TokenType operatorType = previous.Type;
 
@@ -286,6 +398,24 @@ namespace Lox.Lib
             }
         }
 
+        private void VarDeclaration()
+        {
+            byte global = ParseVariable("Expect variable name after var.");
+
+            if (Match(TokenType.Equal)) {
+                Expression();
+            } else {
+                EmitByte(OpCode.Nil);
+            }
+
+            Consume(TokenType.Semicolon, "Expect ';' after varible delclaration");
+            DefineVariable(global);
+        }
+
+        private void Variable(bool canAssign)
+        {
+            NamedVariable(previous, canAssign);
+        }
     }
 
     enum Precidence

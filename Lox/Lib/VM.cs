@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
 
@@ -15,6 +16,7 @@ namespace Lox.Lib
         private readonly TextWriter writer;
         private readonly Value[] stack = new Value[byte.MaxValue];
         private int stackTop = 0;
+        private Hashtable globals = new Hashtable();
 
         public VM(TextWriter writer)
         {
@@ -50,6 +52,32 @@ namespace Lox.Lib
                     case OpCode.Nil: Push(Value.Nil); break;
                     case OpCode.True: Push(Value.Bool(true)); break;
                     case OpCode.False: Push(Value.Bool(false)); break;
+                    case OpCode.Pop: Pop(); break;
+                    case OpCode.GetGlobal: {
+                            ObjString name = ReadString();
+                            if (!globals.ContainsKey(name)) {
+                                RuntimeError("Undefined variable '{0}'.", name.Chars);
+                                return InterpretResult.RuntimeError;
+                            }
+                            Value value = globals[name];
+                            Push(value);
+                            break;
+                        }
+                    case OpCode.DefineGlobal: {
+                            ObjString name = ReadString();
+                            globals[name] = Peek(0);
+                            Pop();
+                            break;
+                        }
+                    case OpCode.SetGlobal: {
+                            ObjString name = ReadString();
+                            if (!globals.ContainsKey(name)) {
+                                RuntimeError("Undefined variable {0}.", name.Chars);
+                                return InterpretResult.RuntimeError;
+                            }
+                            globals[name] = Peek(0);
+                            break;
+                        }
                     case OpCode.Equal: {
                             Value b = Pop();
                             Value a = Pop();
@@ -132,8 +160,13 @@ namespace Lox.Lib
                         }
                         Push(Value.Number(-Pop().AsNumber));
                         break;
+                    case OpCode.Print: {
+
+                            writer.WriteLine("{0}", Pop());
+                            break;
+                        }
+
                     case OpCode.Return:
-                        writer.WriteLine("{0}", Pop());
                         return InterpretResult.OK;
                 }
             }
@@ -147,6 +180,11 @@ namespace Lox.Lib
         private Value ReadConstant()
         {
             return chunk.GetConstant(ReadByte());
+        }
+
+        private ObjString ReadString()
+        {
+            return ReadConstant().AsString;
         }
 
         private void ResetStack()
@@ -174,7 +212,7 @@ namespace Lox.Lib
         private void Push(Value v)
         {
             stack[stackTop++] = v;
-        } 
+        }
     }
 
     public enum InterpretResult

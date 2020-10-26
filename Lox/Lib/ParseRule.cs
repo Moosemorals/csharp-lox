@@ -7,8 +7,8 @@ namespace Lox.Lib
     internal class ParseRule
     {
         public TokenType Type;
-        public Action Prefix;
-        public Action Infix;
+        public Action<bool> Prefix;
+        public Action<bool> Infix;
         public Precidence Precidence;
     }
 }
