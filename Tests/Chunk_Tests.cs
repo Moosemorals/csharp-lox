@@ -64,7 +64,7 @@ namespace Tests
             Chunk c = new Chunk();
 
             // Act
-            int con = c.AddConstant(new Value { V = 1.2 });
+            int con = c.AddConstant(Value.Number(1.12));
 
             c.Add(OpCode.Constant, 1);
             c.Add((byte)con);
@@ -79,7 +79,7 @@ namespace Tests
             // Arrange
             string expected = string.Format("-- chunk --{0}0000    1 OP_CONSTANT         0 '1.2'{0}", Environment.NewLine);
             Chunk c = new Chunk();
-            int con = c.AddConstant(new Value { V = 1.2 });
+            int con = c.AddConstant(Value.Number(1.2));
             c.Add(OpCode.Constant, 1);
             c.Add((byte)con, 1);
 
@@ -100,7 +100,7 @@ namespace Tests
             // Arrange
             string expected = string.Format("-- chunk --{0}0000    1 OP_CONSTANT         0 '1.2'{0}0002    2 OP_RETURN{0}", Environment.NewLine);
             Chunk c = new Chunk();
-            int con = c.AddConstant(new Value { V = 1.2 });
+            int con = c.AddConstant(Value.Number(1.2));
             c.Add(OpCode.Constant, 1);
             c.Add((byte)con, 1);
             c.Add(OpCode.Return, 2);
@@ -122,7 +122,7 @@ namespace Tests
             // Arrange
             string expected = string.Format("-- chunk --{0}0000    1 OP_CONSTANT         0 '1.2'{0}0002    | OP_RETURN{0}", Environment.NewLine);
             Chunk c = new Chunk();
-            int con = c.AddConstant(new Value { V = 1.2 });
+            int con = c.AddConstant(Value.Number(1.2));
             c.Add(OpCode.Constant, 1);
             c.Add((byte)con, 1);
             c.Add(OpCode.Return, 1);

@@ -30,8 +30,7 @@ namespace Lox.Lib
                 Buffer.BlockCopy(from, 0, to, 0, oldCap);
             }
             return to;
-        }
-
+        } 
 
     }
 }

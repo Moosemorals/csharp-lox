@@ -174,9 +174,7 @@ namespace Lox.Lib
         private void Push(Value v)
         {
             stack[stackTop++] = v;
-        }
-
-
+        } 
     }
 
     public enum InterpretResult

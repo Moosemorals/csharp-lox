@@ -41,6 +41,8 @@ namespace Lox
                 return InterpretResult.CompileError;
             }
 
+            writer.WriteLine("---End of compile---");
+
             VM vm = new VM(writer);
             return vm.Interpret(chunk); 
         }

@@ -45,6 +45,7 @@ namespace Lox.Lib
             }
             return As != null ? As.ToString() : "Nil";
         }
+
         public bool IsEqual(Value b)
         {
             if (Type != b.Type) {
