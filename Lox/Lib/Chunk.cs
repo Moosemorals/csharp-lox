@@ -59,10 +59,11 @@ namespace Lox.Lib
             }
         }
 
-        private int SimpleInstruction(TextWriter o, string name, int offset)
+        private int ByteInstruction(TextWriter o, string name, int offset)
         {
-            o.WriteLine(name);
-            return offset + 1;
+            byte slot = values[offset + 1];
+            o.WriteLine("{0,-16} {1,4:X}", name, slot);
+            return offset + 2;
         }
 
         private int ConstantInstruction(TextWriter o, string name, int offset)
@@ -71,6 +72,13 @@ namespace Lox.Lib
             o.WriteLine("{0,-16} {1,4:X} '{2}'", name, constant, constants.values[constant].ToString());
             return offset + 2;
         }
+
+        private int SimpleInstruction(TextWriter o, string name, int offset)
+        {
+            o.WriteLine(name);
+            return offset + 1;
+        }
+
 
         public int DisassembleInstruction(TextWriter writer, int offset)
         {
@@ -93,6 +101,10 @@ namespace Lox.Lib
                     return SimpleInstruction(writer, "OP_FALSE", offset);
                 case OpCode.Pop:
                     return SimpleInstruction(writer, "OP_POP", offset);
+                case OpCode.GetLocal:
+                    return ByteInstruction(writer, "OP_GET_LOCAL", offset);
+                case OpCode.SetLocal:
+                    return ByteInstruction(writer, "OP_SET_LOCAL", offset);
                 case OpCode.GetGlobal:
                     return ConstantInstruction(writer, "OP_GET_GLOBAL", offset);
                 case OpCode.DefineGlobal:

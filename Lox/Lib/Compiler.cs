@@ -20,6 +20,9 @@ namespace Lox.Lib
         private bool panicMode;
         private TextWriter writer;
         private Chunk compilingChunk;
+        private readonly Local[] locals = new Local[byte.MaxValue];
+        private int localCount = 0;
+        private int scopeDepth = 0;
 
         private readonly ParseRule[] rules;
 
@@ -88,6 +91,19 @@ namespace Lox.Lib
             return !hadError;
         }
 
+        private void AddLocal(Token name)
+        {
+            if (localCount == byte.MaxValue) {
+                Error("Too many local variables in function.");
+                return;
+            }
+
+            locals[localCount++] = new Local {
+                name = name,
+                depth = -1,
+            };
+        }
+
         private void Advance()
         {
             previous = current;
@@ -125,6 +141,20 @@ namespace Lox.Lib
             }
         }
 
+        private void BeginScope()
+        {
+            scopeDepth += 1;
+        }
+
+        private void Block()
+        {
+            while (!Check(TokenType.RightBrace) && !Check(TokenType.Eof)) {
+                Declaration();
+            }
+
+            Consume(TokenType.RightBrace, "Expect '}' after block.");
+        }
+
         private bool Check(TokenType type)
         {
             return current.Type == type;
@@ -149,7 +179,7 @@ namespace Lox.Lib
         {
             if (Match(TokenType.Var)) {
                 VarDeclaration();
-            } else { 
+            } else {
                 Statement();
             }
 
@@ -158,8 +188,35 @@ namespace Lox.Lib
             }
         }
 
+        private void DeclareVariable()
+        {
+            if (scopeDepth == 0) {
+                return;
+            }
+
+            Token name = previous;
+
+            for (int i = localCount - 1; i >= 0; i -= 1) {
+                Local local = locals[i];
+                if (local.depth != -1 && local.depth < scopeDepth) {
+                    break;
+                }
+
+                if (name.Lexeme == local.name.Lexeme) {
+                    Error($"Already a variable called {name.Lexeme} in this scope.");
+                }
+            }
+
+
+            AddLocal(name);
+        }
+
         private void DefineVariable(byte global)
         {
+            if (scopeDepth > 0) {
+                MarkInitialized();
+                return;
+            }
             EmitBytes(OpCode.DefineGlobal, global);
         }
 
@@ -198,6 +255,16 @@ namespace Lox.Lib
                 CurrentChunk().Disassemble(writer, "code");
             }
 #endif
+        }
+
+        private void EndScope()
+        {
+            scopeDepth -= 1;
+
+            while (localCount > 0 && locals[localCount - 1].depth > scopeDepth) {
+                EmitByte(OpCode.Pop);
+                localCount -= 1;
+            }
         }
 
         private void Error(string message)
@@ -273,12 +340,25 @@ namespace Lox.Lib
 
         private void NamedVariable(Token name, bool canAssign)
         {
-            byte arg = IdentifierConstant(name);
+            OpCode getOp, setOp;
+
+            int arg = ResolveLocal(name);
+
+            if (arg != -1) {
+                setOp = OpCode.SetLocal;
+                getOp = OpCode.GetLocal;
+            } else {
+                arg = IdentifierConstant(name);
+                setOp = OpCode.SetGlobal;
+                getOp = OpCode.GetGlobal;
+            }
+
+
             if (canAssign && Match(TokenType.Equal)) {
                 Expression();
-                EmitBytes(OpCode.SetGlobal, arg);
+                EmitBytes(setOp, (byte)arg);
             } else {
-                EmitBytes(OpCode.GetGlobal, arg);
+                EmitBytes(getOp, (byte)arg);
             }
         }
 
@@ -291,6 +371,11 @@ namespace Lox.Lib
             }
 
             return (byte)constant;
+        }
+
+        private void MarkInitialized()
+        {
+            locals[localCount - 1].depth = scopeDepth;
         }
 
         private bool Match(TokenType type)
@@ -334,6 +419,12 @@ namespace Lox.Lib
         private byte ParseVariable(string errorMessage)
         {
             Consume(TokenType.Identifier, errorMessage);
+
+            DeclareVariable();
+            if (scopeDepth > 0) {
+                return 0;
+            }
+
             return IdentifierConstant(previous);
         }
 
@@ -344,10 +435,29 @@ namespace Lox.Lib
             EmitByte(OpCode.Print);
         }
 
+        private int ResolveLocal(Token name)
+        {
+            for (int i = localCount - 1; i >= 0; i -= 1) {
+                Local local = locals[i];
+                if (name.Lexeme == local.name.Lexeme) {
+                    if (local.depth == -1) {
+                        Error($"Can't read local variable {name.Lexeme} in it's own initializer.");
+                    }
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
         public void Statement()
         {
             if (Match(TokenType.Print)) {
                 PrintStatement();
+            } else if (Match(TokenType.LeftBrace)) {
+                BeginScope();
+                Block();
+                EndScope();
             } else {
                 ExpressionStatement();
             }
@@ -415,6 +525,12 @@ namespace Lox.Lib
         private void Variable(bool canAssign)
         {
             NamedVariable(previous, canAssign);
+        }
+
+        private class Local
+        {
+            public Token name;
+            public int depth;
         }
     }
 

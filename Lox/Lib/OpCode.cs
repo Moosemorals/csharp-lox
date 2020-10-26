@@ -11,6 +11,8 @@ namespace Lox.Lib
         True,
         False,
         Pop,
+        GetLocal,
+        SetLocal,
         GetGlobal,
         DefineGlobal,
         SetGlobal,

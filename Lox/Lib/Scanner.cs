@@ -43,7 +43,7 @@ namespace Lox.Lib
                 '(' => MakeToken(TokenType.LeftParen),
                 ')' => MakeToken(TokenType.RightParen),
                 '{' => MakeToken(TokenType.LeftBrace),
-                '}' => MakeToken(TokenType.LeftBrace),
+                '}' => MakeToken(TokenType.RightBrace),
                 ';' => MakeToken(TokenType.Semicolon),
                 ',' => MakeToken(TokenType.Comma),
                 '.' => MakeToken(TokenType.Dot),

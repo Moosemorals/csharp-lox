@@ -53,6 +53,16 @@ namespace Lox.Lib
                     case OpCode.True: Push(Value.Bool(true)); break;
                     case OpCode.False: Push(Value.Bool(false)); break;
                     case OpCode.Pop: Pop(); break;
+                    case OpCode.GetLocal: {
+                            byte slot = ReadByte();
+                            Push(stack[slot]);
+                            break;
+                        }
+                    case OpCode.SetLocal: {
+                            byte slot = ReadByte();
+                            stack[slot] = Peek(0);
+                            break;
+                        }
                     case OpCode.GetGlobal: {
                             ObjString name = ReadString();
                             if (!globals.ContainsKey(name)) {
@@ -161,7 +171,6 @@ namespace Lox.Lib
                         Push(Value.Number(-Pop().AsNumber));
                         break;
                     case OpCode.Print: {
-
                             writer.WriteLine("{0}", Pop());
                             break;
                         }
