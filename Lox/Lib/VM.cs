@@ -14,7 +14,8 @@ namespace Lox.Lib
         private Chunk chunk;
         private int ip;
         private readonly TextWriter writer;
-
+        private readonly Value[] stack = new Value[byte.MaxValue];
+        private int stackTop = 0;
         private Hashtable globals = new Hashtable();
 
         public VM(TextWriter writer)
@@ -51,10 +52,9 @@ namespace Lox.Lib
 
         private InterpretResult Run()
         {
-            Stack stack = new Stack(byte.MaxValue);
             while (true) {
 #if DEBUG
-                writer.WriteLine("->[{0}]", stack.ToString());
+                writer.WriteLine("->[{0}]", string.Join(", ", stack.Take(stackTop).Select(v => v.ToString())));
                 chunk.DisassembleInstruction(writer, ip);
 #endif
 
@@ -62,20 +62,20 @@ namespace Lox.Lib
                 switch ((OpCode)instruction) {
                     case OpCode.Constant:
                         Value constant = ReadConstant();
-                        stack.Push(constant);
+                        Push(constant);
                         break;
-                    case OpCode.Nil: stack.Push(Value.Nil); break;
-                    case OpCode.True: stack.Push(Value.Bool(true)); break;
-                    case OpCode.False: stack.Push(Value.Bool(false)); break;
-                    case OpCode.Pop: stack.Pop(); break;
+                    case OpCode.Nil: Push(Value.Nil); break;
+                    case OpCode.True: Push(Value.Bool(true)); break;
+                    case OpCode.False: Push(Value.Bool(false)); break;
+                    case OpCode.Pop: Pop(); break;
                     case OpCode.GetLocal: {
                             byte slot = ReadByte();
-                            stack.Push(stack[slot]);
+                            Push(stack[slot]);
                             break;
                         }
                     case OpCode.SetLocal: {
                             byte slot = ReadByte();
-                            stack[slot] = stack.Peek(0);
+                            stack[slot] = Peek(0);
                             break;
                         }
                     case OpCode.GetGlobal: {
@@ -85,13 +85,13 @@ namespace Lox.Lib
                                 return InterpretResult.RuntimeError;
                             }
                             Value value = globals[name];
-                            stack.Push(value);
+                            Push(value);
                             break;
                         }
                     case OpCode.DefineGlobal: {
                             ObjString name = ReadString();
-                            globals[name] = stack.Peek(0);
-                            stack.Pop();
+                            globals[name] = Peek(0);
+                            Pop();
                             break;
                         }
                     case OpCode.SetGlobal: {
@@ -100,44 +100,44 @@ namespace Lox.Lib
                                 RuntimeError("Undefined variable {0}.", name.Chars);
                                 return InterpretResult.RuntimeError;
                             }
-                            globals[name] = stack.Peek(0);
+                            globals[name] = Peek(0);
                             break;
                         }
                     case OpCode.Equal: {
-                            Value b = stack.Pop();
-                            Value a = stack.Pop();
-                            stack.Push(Value.Bool(a.IsEqual(b)));
+                            Value b = Pop();
+                            Value a = Pop();
+                            Push(Value.Bool(a.IsEqual(b)));
                             break;
                         }
                     case OpCode.Greater: {
-                            if (!stack.Peek(0).IsNumber || !stack.Peek(1).IsNumber) {
+                            if (!Peek(0).IsNumber || !Peek(1).IsNumber) {
                                 RuntimeError("Operands must be numbers");
                                 return InterpretResult.RuntimeError;
                             }
-                            double r = stack.Pop().AsNumber;
-                            double l = stack.Pop().AsNumber;
-                            stack.Push(Value.Bool(l > r));
+                            double r = Pop().AsNumber;
+                            double l = Pop().AsNumber;
+                            Push(Value.Bool(l > r));
                             break;
                         }
                     case OpCode.Less: {
-                            if (!stack.Peek(0).IsNumber || !stack.Peek(1).IsNumber) {
+                            if (!Peek(0).IsNumber || !Peek(1).IsNumber) {
                                 RuntimeError("Operands must be numbers");
                                 return InterpretResult.RuntimeError;
                             }
-                            double r = stack.Pop().AsNumber;
-                            double l = stack.Pop().AsNumber;
-                            stack.Push(Value.Bool(l < r));
+                            double r = Pop().AsNumber;
+                            double l = Pop().AsNumber;
+                            Push(Value.Bool(l < r));
                             break;
                         }
                     case OpCode.Add: {
-                            if (stack.Peek(0).IsString && stack.Peek(1).IsString) {
-                                ObjString b = stack.Pop().AsString;
-                                ObjString a = stack.Pop().AsString;
-                                stack.Push(Value.Obj(ObjString.CopyString(a.Chars + b.Chars)));
-                            } else if (stack.Peek(0).IsNumber && stack.Peek(1).IsNumber) {
-                                double r = stack.Pop().AsNumber;
-                                double l = stack.Pop().AsNumber;
-                                stack.Push(Value.Number(l + r));
+                            if (Peek(0).IsString && Peek(1).IsString) {
+                                ObjString b = Pop().AsString;
+                                ObjString a = Pop().AsString;
+                                Push(Value.Obj(ObjString.CopyString(a.Chars + b.Chars)));
+                            } else if (Peek(0).IsNumber && Peek(1).IsNumber) {
+                                double r = Pop().AsNumber;
+                                double l = Pop().AsNumber;
+                                Push(Value.Number(l + r));
 
                             } else {
                                 RuntimeError("Operands must be two numbers or two strings");
@@ -146,47 +146,47 @@ namespace Lox.Lib
                             break;
                         }
                     case OpCode.Subtract: {
-                            if (!stack.Peek(0).IsNumber || !stack.Peek(1).IsNumber) {
+                            if (!Peek(0).IsNumber || !Peek(1).IsNumber) {
                                 RuntimeError("Operands must be numbers");
                                 return InterpretResult.RuntimeError;
                             }
-                            double r = stack.Pop().AsNumber;
-                            double l = stack.Pop().AsNumber;
-                            stack.Push(Value.Number(l - r));
+                            double r = Pop().AsNumber;
+                            double l = Pop().AsNumber;
+                            Push(Value.Number(l - r));
                             break;
                         }
                     case OpCode.Multiply: {
-                            if (!stack.Peek(0).IsNumber || !stack.Peek(1).IsNumber) {
+                            if (!Peek(0).IsNumber || !Peek(1).IsNumber) {
                                 RuntimeError("Operands must be numbers");
                                 return InterpretResult.RuntimeError;
                             }
-                            double r = stack.Pop().AsNumber;
-                            double l = stack.Pop().AsNumber;
-                            stack.Push(Value.Number(l * r));
+                            double r = Pop().AsNumber;
+                            double l = Pop().AsNumber;
+                            Push(Value.Number(l * r));
                             break;
                         }
                     case OpCode.Divide: {
-                            if (!stack.Peek(0).IsNumber || !stack.Peek(1).IsNumber) {
+                            if (!Peek(0).IsNumber || !Peek(1).IsNumber) {
                                 RuntimeError("Operands must be numbers");
                                 return InterpretResult.RuntimeError;
                             }
-                            double r = stack.Pop().AsNumber;
-                            double l = stack.Pop().AsNumber;
-                            stack.Push(Value.Number(l / r));
+                            double r = Pop().AsNumber;
+                            double l = Pop().AsNumber;
+                            Push(Value.Number(l / r));
                             break;
                         }
                     case OpCode.Not:
-                        stack.Push(Value.Bool(IsFalsy(stack.Pop())));
+                        Push(Value.Bool(IsFalsy(Pop())));
                         break;
                     case OpCode.Negate:
-                        if (!stack.Peek(0).IsNumber) {
+                        if (!Peek(0).IsNumber) {
                             RuntimeError("Operand must be a number");
                             return InterpretResult.RuntimeError;
                         }
-                        stack.Push(Value.Number(-stack.Pop().AsNumber));
+                        Push(Value.Number(-Pop().AsNumber));
                         break;
                     case OpCode.Print: {
-                            writer.WriteLine("{0}", stack.Pop());
+                            writer.WriteLine("{0}", Pop());
                             break;
                         }
                     case OpCode.Jump: {
@@ -196,7 +196,7 @@ namespace Lox.Lib
                         }
                     case OpCode.JumpIfFalse: {
                             ushort offset = ReadShort();
-                            if (IsFalsy(stack.Peek(0))) {
+                            if (IsFalsy(Peek(0))) {
                                 ip += offset;
                             }
                             break;
@@ -225,6 +225,7 @@ namespace Lox.Lib
         private ushort ReadShort()
         {
             ip += 2;
+            
             return (ushort)((chunk.values[ip - 2] << 8) | chunk.values[ip - 1]);
         }
 
@@ -233,66 +234,31 @@ namespace Lox.Lib
             return ReadConstant().AsString;
         }
 
+        private void ResetStack()
+        {
+            stackTop = 0;
+        }
+
         private void RuntimeError(string format, params object[] args)
         {
             writer.WriteLine(format, args);
             writer.WriteLine("[line {0}] in script", chunk.GetLine(ip));
+            ResetStack();
         }
 
-        private ref struct Stack
+        private Value Peek(int distance)
         {
-            public Stack(int length)
-            {
-                _values = new Value[length];
-                stackTop = 0;
-            }
+            return stack[stackTop - 1 - distance];
+        }
 
-            private Span<Value> _values;
-            private int stackTop;
+        private Value Pop()
+        {
+            return stack[--stackTop];
+        }
 
-            public void Reset()
-            {
-                stackTop = 0;
-            }
-
-            public Value Peek(int distance)
-            {
-                return _values[stackTop - 1 - distance];
-            }
-
-            public Value this[int index] {
-                get {
-                    return _values[index];
-                }
-                set {
-                    _values[index] = value;
-                }
-            }
-
-            public void Push(Value v)
-            {
-                _values[stackTop++] = v;
-            }
-
-            public Value Pop()
-            {
-                return _values[--stackTop];
-            }
-
-            public Span<Value> SubStack(int from)
-            {
-                return _values.Slice(from);
-            }
-
-            public Span<Value> Take(int count)
-            {
-                return _values.Slice(0, count);
-            }
-
-            public override string ToString()
-            {
-                return string.Join(", ", Take(stackTop).ToArray().Select(v => v.ToString()));
-            }
+        private void Push(Value v)
+        {
+            stack[stackTop++] = v;
         }
     }
 
