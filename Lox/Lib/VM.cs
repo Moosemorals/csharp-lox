@@ -5,7 +5,7 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
-
+using System.Windows.Markup;
 
 namespace Lox.Lib
 {
@@ -21,6 +21,21 @@ namespace Lox.Lib
         public VM(TextWriter writer)
         {
             this.writer = writer;
+        }
+
+        public InterpretResult Interpret(string source)
+        {
+            Chunk chunk = new Chunk();
+
+            Compiler compiler = new Compiler();
+
+            if (!compiler.Compile(writer, source, chunk)) {
+                return InterpretResult.CompileError;
+            }
+
+            writer.WriteLine("---End of compile---");
+
+            return Interpret(chunk);
         }
 
         public InterpretResult Interpret(Chunk c)
@@ -174,7 +189,23 @@ namespace Lox.Lib
                             writer.WriteLine("{0}", Pop());
                             break;
                         }
-
+                    case OpCode.Jump: {
+                            ushort offset = ReadShort();
+                            ip += offset;
+                            break;
+                        }
+                    case OpCode.JumpIfFalse: {
+                            ushort offset = ReadShort();
+                            if (IsFalsy(Peek(0))) {
+                                ip += offset;
+                            }
+                            break;
+                        }
+                    case OpCode.Loop: {
+                            ushort offset = ReadShort();
+                            ip -= offset;
+                            break;
+                        }
                     case OpCode.Return:
                         return InterpretResult.OK;
                 }
@@ -189,6 +220,13 @@ namespace Lox.Lib
         private Value ReadConstant()
         {
             return chunk.GetConstant(ReadByte());
+        }
+
+        private ushort ReadShort()
+        {
+            ip += 2;
+            
+            return (ushort)((chunk.values[ip - 2] << 8) | chunk.values[ip - 1]);
         }
 
         private ObjString ReadString()

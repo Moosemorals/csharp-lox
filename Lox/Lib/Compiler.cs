@@ -2,11 +2,13 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Data;
 using System.Globalization;
 using System.IO;
 using System.Linq.Expressions;
 using System.Security.Principal;
 using System.Text;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Lox.Lib
@@ -29,7 +31,7 @@ namespace Lox.Lib
         public Compiler()
         {
             rules = new[] {
-                new ParseRule { Type = TokenType.And, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.And, Prefix = null, Infix = And, Precidence = Precidence.And },
                 new ParseRule { Type = TokenType.Bang, Prefix = Unary, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.BangEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Equality },
                 new ParseRule { Type = TokenType.Class, Prefix = null, Infix = null, Precidence = Precidence.None },
@@ -54,7 +56,7 @@ namespace Lox.Lib
                 new ParseRule { Type = TokenType.Minus, Prefix = Unary, Infix = Binary, Precidence = Precidence.Term },
                 new ParseRule { Type = TokenType.Nil, Prefix = Literal, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Number, Prefix = Number, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.Or, Prefix = null, Infix = null, Precidence = Precidence.None },
+                new ParseRule { Type = TokenType.Or, Prefix = null, Infix = Or, Precidence = Precidence.Or },
                 new ParseRule { Type = TokenType.Plus, Prefix = null, Infix = Binary, Precidence = Precidence.Term },
                 new ParseRule { Type = TokenType.Print, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.Return, Prefix = null, Infix = null, Precidence = Precidence.None },
@@ -115,6 +117,17 @@ namespace Lox.Lib
 
                 ErrorAtCurrent(current.Lexeme);
             }
+        }
+
+        private void And(bool canAssign)
+        {
+            int endJump = EmitJump(OpCode.JumpIfFalse);
+
+            EmitJump(OpCode.Pop);
+
+            ParsePrecidence(Precidence.And);
+
+            PatchJump(endJump);
         }
 
         private void Binary(bool canAssign)
@@ -241,6 +254,28 @@ namespace Lox.Lib
             EmitBytes(OpCode.Constant, MakeConstant(value));
         }
 
+        private int EmitJump(OpCode instruction)
+        {
+            EmitByte(instruction);
+            EmitByte(0xff);
+            EmitByte(0xff);
+            return CurrentChunk().Count - 2;
+        }
+
+        private void EmitLoop(int loopStart)
+        {
+            EmitByte(OpCode.Loop);
+
+            int offset = CurrentChunk().Count - loopStart + 2;
+            if (offset > (255 * 255)) {
+                Error("Loop body too large.");
+            }
+
+            EmitByte((byte)((offset >> 8) & 0xff));
+            EmitByte((byte)(offset & 0xff));
+        }
+
+
         private void EmitReturn()
         {
             EmitByte(OpCode.Return);
@@ -311,6 +346,55 @@ namespace Lox.Lib
             EmitByte(OpCode.Pop);
         }
 
+        private void ForStatement()
+        {
+            BeginScope();
+            Consume(TokenType.LeftParen, "Expect '(' after 'for'.");
+            if (Match(TokenType.Semicolon)) {
+                // No initializer
+            } else if (Match(TokenType.Var)) {
+                VarDeclaration();
+            } else {
+                ExpressionStatement();
+            }
+
+            int loopStart = CurrentChunk().Count;
+
+            int exitJump = -1;
+            if (!Match(TokenType.Semicolon)) {
+                Expression();
+                Consume(TokenType.Semicolon, "Expect ';' after loop condition.");
+
+                // Jump out of loop if condition is false
+                exitJump = EmitJump(OpCode.JumpIfFalse);
+                EmitByte(OpCode.Pop);
+            }
+
+            if (!Match(TokenType.RightParen)) {
+                int bodyJump = EmitJump(OpCode.Jump);
+
+                int incrementStart = CurrentChunk().Count;
+                Expression();
+                EmitByte(OpCode.Pop);
+                Consume(TokenType.RightParen, "Expect ')' after for clauses.");
+
+                EmitLoop(loopStart);
+                loopStart = incrementStart;
+                PatchJump(bodyJump);
+            }
+
+            Statement();
+
+            EmitLoop(loopStart);
+
+            if (exitJump != -1) {
+                PatchJump(exitJump);
+                EmitByte(OpCode.Pop);
+            }
+
+            EndScope();
+        }
+
         private ParseRule GetRule(TokenType type)
         {
             return rules[(int)type];
@@ -325,6 +409,26 @@ namespace Lox.Lib
         private byte IdentifierConstant(Token name)
         {
             return MakeConstant(Value.Obj(ObjString.CopyString(name.Lexeme)));
+        }
+
+        private void IfStatement()
+        {
+            Consume(TokenType.LeftParen, "Expect '(' after 'if'.");
+            Expression();
+            Consume(TokenType.RightParen, "Expect ')' after condition.");
+
+            int thenJump = EmitJump(OpCode.JumpIfFalse);
+            EmitByte(OpCode.Pop);
+            Statement();
+
+            int elseJump = EmitJump(OpCode.Jump);
+
+            PatchJump(thenJump);
+            EmitByte(OpCode.Pop);
+            if (Match(TokenType.Else)) {
+                Statement();
+            }
+            PatchJump(elseJump);
         }
 
         private void Literal(bool canAssign)
@@ -393,6 +497,31 @@ namespace Lox.Lib
             EmitConstant(Value.Number(value));
         }
 
+        private void Or(bool canAssign)
+        {
+            int elseJump = EmitJump(OpCode.JumpIfFalse);
+            int endJump = EmitJump(OpCode.Jump);
+
+            PatchJump(elseJump);
+            EmitByte(OpCode.Pop);
+
+            ParsePrecidence(Precidence.Or);
+            PatchJump(endJump);
+        }
+
+        private void PatchJump(int offset)
+        {
+            // -2 to adjust for the bytecode of the jump offset itself.
+            int jump = CurrentChunk().Count - offset - 2;
+
+            if (jump > (255 * 255)) {
+                Error("Too much code to jump over.");
+            }
+
+            CurrentChunk().values[offset] = (byte)((jump >> 8) & 0xff);
+            CurrentChunk().values[offset + 1] = (byte)(jump & 0xff);
+        }
+
         private void ParsePrecidence(Precidence precidence)
         {
             Advance();
@@ -450,10 +579,16 @@ namespace Lox.Lib
             return -1;
         }
 
-        public void Statement()
+        private void Statement()
         {
             if (Match(TokenType.Print)) {
                 PrintStatement();
+            } else if (Match(TokenType.For)) {
+                ForStatement();
+            } else if (Match(TokenType.If)) {
+                IfStatement();
+            } else if (Match(TokenType.While)) {
+                WhileStatement();
             } else if (Match(TokenType.LeftBrace)) {
                 BeginScope();
                 Block();
@@ -525,6 +660,22 @@ namespace Lox.Lib
         private void Variable(bool canAssign)
         {
             NamedVariable(previous, canAssign);
+        }
+
+        private void WhileStatement()
+        {
+            int loopStart = CurrentChunk().Count;
+            Consume(TokenType.LeftParen, "Expect '(' after 'while'.");
+            Expression();
+            Consume(TokenType.RightParen, "Expect ')' after condition.");
+
+            int exitJump = EmitJump(OpCode.JumpIfFalse);
+            EmitByte(OpCode.Pop);
+            Statement();
+
+            EmitLoop(loopStart);
+            PatchJump(exitJump);
+            EmitByte(OpCode.Pop);
         }
 
         private class Local

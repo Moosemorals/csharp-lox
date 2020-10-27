@@ -26,6 +26,9 @@ namespace Lox.Lib
         Not,
         Negate,
         Print,
+        Jump,
+        JumpIfFalse,
+        Loop,
         Return,
     }
 }

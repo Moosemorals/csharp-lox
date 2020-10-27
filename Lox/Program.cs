@@ -19,33 +19,17 @@ namespace Lox
                 string line = Console.In.ReadLine();
 
                 if (!string.IsNullOrEmpty(line)) {
-                    Interpret(Console.Out, line);
-                }
-
+                    vm.Interpret(line);
+                } 
             }
         }
 
         private static void RunFile(string path)
         {
             string source = File.ReadAllText(path, Encoding.UTF8);
-            InterpretResult result = Interpret(Console.Out, source);
+            InterpretResult result = vm.Interpret(source);
 
             Environment.Exit((int)result);
-        }
-
-        private static InterpretResult Interpret(TextWriter writer, string source)
-        {
-            Chunk chunk = new Chunk();
-
-            Compiler compiler = new Compiler();
-
-            if (!compiler.Compile(writer, source, chunk)) {
-                return InterpretResult.CompileError;
-            }
-
-            writer.WriteLine("---End of compile---");
-
-            return vm.Interpret(chunk); 
         }
 
         static void Main(string[] args)

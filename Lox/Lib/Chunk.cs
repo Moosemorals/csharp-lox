@@ -48,6 +48,8 @@ namespace Lox.Lib
             return lines[instruction];
         }
 
+        public int Count => count;
+
         #region Disassembler
 
         public void Disassemble(TextWriter o, string name)
@@ -73,12 +75,18 @@ namespace Lox.Lib
             return offset + 2;
         }
 
+        private int JumpInstruction(TextWriter o, string name, int sign, int offset)
+        {
+            ushort jump = (ushort)((values[offset + 1] << 8) | values[offset + 2]);
+            o.WriteLine("{0,-16} {1,4:X} -> {2,4:X}", name, offset, offset+ 3 + sign * jump);
+            return offset + 3;
+        }
+
         private int SimpleInstruction(TextWriter o, string name, int offset)
         {
             o.WriteLine(name);
             return offset + 1;
         }
-
 
         public int DisassembleInstruction(TextWriter writer, int offset)
         {
@@ -131,6 +139,12 @@ namespace Lox.Lib
                     return SimpleInstruction(writer, "OP_NEGATE", offset);
                 case OpCode.Print:
                     return SimpleInstruction(writer, "OP_PRINT", offset);
+                case OpCode.Jump:
+                    return JumpInstruction(writer, "OP_JUMP", 1, offset);
+                case OpCode.JumpIfFalse:
+                    return JumpInstruction(writer, "OP_JUMP_IF_FALSE", 1, offset);
+                case OpCode.Loop:
+                    return JumpInstruction(writer, "OP_LOOP", -1, offset);
                 case OpCode.Return:
                     return SimpleInstruction(writer, "OP_RETURN", offset);
                 default:
