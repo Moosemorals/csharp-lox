@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net.Http.Headers;
 using System.Text;
 
 namespace Lox.Lib
@@ -30,7 +31,7 @@ namespace Lox.Lib
                 Buffer.BlockCopy(from, 0, to, 0, oldCap);
             }
             return to;
-        } 
+        }
 
     }
 }

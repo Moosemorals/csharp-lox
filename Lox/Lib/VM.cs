@@ -14,7 +14,7 @@ namespace Lox.Lib
         private Chunk chunk;
         private int ip;
         private readonly TextWriter writer;
-        private readonly Value[] stack = new Value[byte.MaxValue];
+        private readonly SliceableArray<Value> stack = new SliceableArray<Value>(byte.MaxValue);
         private int stackTop = 0;
         private Hashtable globals = new Hashtable();
 
