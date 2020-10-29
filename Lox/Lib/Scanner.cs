@@ -224,7 +224,6 @@ namespace Lox.Lib
         {
             return new Token {
                 Type = type,
-                Start = start,
                 Length = current - start,
                 Line = line,
                 Lexeme = source[start..current],
@@ -235,7 +234,6 @@ namespace Lox.Lib
         {
             return new Token {
                 Type = TokenType.Error,
-                Start = -1,
                 Length = message.Length,
                 Line = line,
                 Lexeme = message,

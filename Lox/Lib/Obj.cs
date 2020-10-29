@@ -23,7 +23,7 @@ namespace Lox.Lib
         public static ObjString CopyString(string src)
         {
             return new ObjString {
-                Chars = src
+                Chars = new string(src),
             };
         }
 
@@ -33,8 +33,43 @@ namespace Lox.Lib
         }
     }
 
+    public class ObjFunction : Obj
+    {
+        public ObjFunction() : base(ObjType.Function)
+        {
+            arity = 0;
+            name = null;
+            chunk = new Chunk();
+        }
+
+        public int arity;
+
+        public Chunk chunk;
+
+        public ObjString name;
+
+        public override string ToString()
+        {
+            return $"<fn {(name == null ? "<script>" : name.Chars)}>";
+        }
+    }
+
+    public class ObjNative : Obj
+    {
+        public ObjNative() : base(ObjType.Native) { }
+
+        public Func<int, Value[], Value> Func {get;set;}
+
+        public override string ToString()
+        {
+            return $"<native fn>";
+        }
+    }
+
     public enum ObjType
     {
+        Function,
         String,
+        Native,
     }
 }

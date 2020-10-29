@@ -145,10 +145,12 @@ namespace Lox.Lib
                     return JumpInstruction(writer, "OP_JUMP_IF_FALSE", 1, offset);
                 case OpCode.Loop:
                     return JumpInstruction(writer, "OP_LOOP", -1, offset);
+                case OpCode.Call:
+                    return ByteInstruction(writer, "OP_CALL", offset);
                 case OpCode.Return:
                     return SimpleInstruction(writer, "OP_RETURN", offset);
                 default:
-                    writer.Write("Unknown opcode");
+                    writer.WriteLine("Unknown opcode {0}", instruction);
                     return offset + 1;
 
             }

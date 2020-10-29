@@ -38,5 +38,7 @@ namespace Lox.Lib
         }
 
         public int Length => _backingArray.Length - _offset;
+
+        public int Offset => _offset;
     }
 }

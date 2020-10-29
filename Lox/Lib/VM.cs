@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -11,51 +12,47 @@ namespace Lox.Lib
 {
     public class VM
     {
-        private Chunk chunk;
-        private int ip;
+        private const int FramesMax = 64;
+        private const int StackMax = FramesMax * byte.MaxValue;
+
+        private readonly CallFrame[] frames = new CallFrame[FramesMax];
+        private int frameCount;
+        private CallFrame frame;
+
         private readonly TextWriter writer;
-        private readonly SliceableArray<Value> stack = new SliceableArray<Value>(byte.MaxValue);
+        private readonly SliceableArray<Value> stack = new SliceableArray<Value>(StackMax);
         private int stackTop = 0;
         private Hashtable globals = new Hashtable();
 
         public VM(TextWriter writer)
         {
             this.writer = writer;
+
+            DefineNative("clock", ClockNative);
         }
 
         public InterpretResult Interpret(string source)
         {
-            Chunk chunk = new Chunk();
+            ObjFunction function = new Compiler(Compiler.FunctionType.Script).Compile(writer, source);
 
-            Compiler compiler = new Compiler();
-
-            if (!compiler.Compile(writer, source, chunk)) {
+            if (function == null) {
                 return InterpretResult.CompileError;
             }
 
-            writer.WriteLine("---End of compile---");
+            Push(Value.Obj(function));
 
-            return Interpret(chunk);
-        }
+            CallValue(Value.Obj(function), 0);
 
-        public InterpretResult Interpret(Chunk c)
-        {
-            chunk = c;
-            ip = 0;
             return Run();
-        }
-
-        private bool IsFalsy(Value value)
-        {
-            return value.IsNil || (value.IsBool && !value.AsBool);
         }
 
         private InterpretResult Run()
         {
+            frame = frames[frameCount - 1];
             while (true) {
 #if DEBUG
                 writer.WriteLine("->[{0}]", string.Join(", ", stack.Take(stackTop).Select(v => v.ToString())));
-                chunk.DisassembleInstruction(writer, ip);
+                frame.function.chunk.DisassembleInstruction(writer, frame.ip);
 #endif
 
                 byte instruction = ReadByte();
@@ -70,12 +67,12 @@ namespace Lox.Lib
                     case OpCode.Pop: Pop(); break;
                     case OpCode.GetLocal: {
                             byte slot = ReadByte();
-                            Push(stack[slot]);
+                            Push(frame.slots[slot]);
                             break;
                         }
                     case OpCode.SetLocal: {
                             byte slot = ReadByte();
-                            stack[slot] = Peek(0);
+                            frame.slots[slot] = Peek(0);
                             break;
                         }
                     case OpCode.GetGlobal: {
@@ -191,42 +188,112 @@ namespace Lox.Lib
                         }
                     case OpCode.Jump: {
                             ushort offset = ReadShort();
-                            ip += offset;
+                            frame.ip += offset;
                             break;
                         }
                     case OpCode.JumpIfFalse: {
                             ushort offset = ReadShort();
                             if (IsFalsy(Peek(0))) {
-                                ip += offset;
+                                frame.ip += offset;
                             }
                             break;
                         }
                     case OpCode.Loop: {
                             ushort offset = ReadShort();
-                            ip -= offset;
+                            frame.ip -= offset;
                             break;
                         }
-                    case OpCode.Return:
-                        return InterpretResult.OK;
+                    case OpCode.Call: {
+                            int argCount = ReadByte();
+                            if (!CallValue(Peek(argCount), argCount)) {
+                                return InterpretResult.RuntimeError;
+                            }
+                            frame = frames[frameCount - 1];
+                            break;
+                        }
+                    case OpCode.Return: {
+                            Value result = Pop();
+
+                            frameCount -= 1;
+                            if (frameCount == 0) {
+                                Pop();
+                                return InterpretResult.OK;
+                            }
+
+                            stackTop = frame.slots.Offset;
+                            Push(result);
+
+                            frame = frames[frameCount - 1];
+                            break;
+                        }
+
                 }
             }
         }
 
+        private bool CallValue(Value callee, int argCount)
+        {
+            if (callee.IsObj) {
+                switch (callee.ObjType) {
+                    case ObjType.Function:
+                        return Call(callee.AsFunction, argCount);
+                    case ObjType.Native: {
+                            Func<int, Value[], Value> native = callee.AsNative;
+                            Value result = native(argCount, stack.Take(argCount));
+                            stackTop -= argCount + 1;
+                            Push(result);
+                            return true;
+                        }
+                    default:
+                        break;
+                }
+            }
+
+            RuntimeError("Can only call functions and classes");
+            return false;
+        }
+
+        private bool Call(ObjFunction function, int argCount)
+        {
+            if (argCount != function.arity) {
+                RuntimeError("Expected {0} arguments but got {1}", function.arity, argCount);
+                return false;
+            }
+
+            if (frameCount == FramesMax) {
+                RuntimeError("Stack overflow.");
+                return false;
+            }
+
+            frames[frameCount++] = new CallFrame {
+                function = function,
+                ip = 0,
+                slots = stack.Slice(stackTop - argCount - 1),
+            };
+
+            return true;
+        }
+
+        private bool IsFalsy(Value value)
+        {
+            return value.IsNil || (value.IsBool && !value.AsBool);
+        }
+
         private byte ReadByte()
         {
-            return chunk.values[ip++];
+            return frame.function.chunk.values[frame.ip++];
         }
 
         private Value ReadConstant()
         {
-            return chunk.GetConstant(ReadByte());
+            return frame.function.chunk.GetConstant(ReadByte());
         }
 
         private ushort ReadShort()
         {
-            ip += 2;
-            
-            return (ushort)((chunk.values[ip - 2] << 8) | chunk.values[ip - 1]);
+            frame.ip += 2;
+
+            return (ushort)((frame.function.chunk.values[frame.ip - 2] << 8) | frame.function.chunk.values[frame.ip - 1]);
         }
 
         private ObjString ReadString()
@@ -237,13 +304,35 @@ namespace Lox.Lib
         private void ResetStack()
         {
             stackTop = 0;
+            frameCount = 0;
         }
 
         private void RuntimeError(string format, params object[] args)
         {
+            CallFrame frame = frames[frameCount - 1];
+
+            int line = frame.function.chunk.GetLine(frame.ip);
+
             writer.WriteLine(format, args);
-            writer.WriteLine("[line {0}] in script", chunk.GetLine(ip));
+
+            for (int i = frameCount - 1; i >= 0; i -= 1) {
+                CallFrame f = frames[i];
+                ObjFunction func = f.function;
+                int instruction = frame.ip - 1;
+                writer.WriteLine($"[line {func.chunk.GetLine(instruction)} in {(func.name == null ? "<script>" : func.name.Chars)}");
+            }
+
+
             ResetStack();
+        }
+
+        private void DefineNative(string name, Func<int, Value[], Value> func)
+        {
+            Push(Value.Obj(ObjString.CopyString(name)));
+            Push(Value.Obj(new ObjNative { Func = func }));
+            globals[stack[0].AsString] = stack[1];
+            Pop();
+            Pop();
         }
 
         private Value Peek(int distance)
@@ -259,6 +348,18 @@ namespace Lox.Lib
         private void Push(Value v)
         {
             stack[stackTop++] = v;
+        }
+
+        private Value ClockNative(int argCount, Value[] args)
+        {
+            return Value.Number(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        }
+
+        class CallFrame
+        {
+            public ObjFunction function;
+            public int ip;
+            public SliceableArray<Value> slots;
         }
     }
 

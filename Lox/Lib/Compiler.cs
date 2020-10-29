@@ -6,30 +6,64 @@ using System.Data;
 using System.Globalization;
 using System.IO;
 using System.Linq.Expressions;
+using System.Net.Http.Headers;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
+using System.Transactions;
 using System.Xml.Linq;
 
 namespace Lox.Lib
 {
     public class Compiler
     {
-        private Token current;
-        private Token previous;
         private Scanner scanner;
-        private bool hadError;
-        private bool panicMode;
         private TextWriter writer;
-        private Chunk compilingChunk;
-        private readonly Local[] locals = new Local[byte.MaxValue];
-        private int localCount = 0;
-        private int scopeDepth = 0;
+
+        class Parser
+        {
+            internal Token current;
+            internal Token previous;
+            internal bool hadError;
+            internal bool panicMode;
+        }
+
+        private Parser parser = new Parser();
+
+        class Instance
+        {
+            internal Instance()
+            {
+                locals = new Local[byte.MaxValue];
+                localCount = 0;
+                scopeDepth = 0;
+                function = new ObjFunction();
+
+                locals[localCount++] = new Local {
+                    depth = 0,
+                    name = new Token {
+                        Lexeme = "",
+                    }
+                };
+            }
+
+            internal ObjFunction function;
+            internal FunctionType type;
+
+            internal readonly Local[] locals;
+            internal int localCount;
+            internal int scopeDepth;
+
+            internal Instance enclosing;
+        }
+
+        private Instance current;
 
         private readonly ParseRule[] rules;
 
-        public Compiler()
+        internal Compiler(FunctionType type)
         {
+            #region Parse Rules
             rules = new[] {
                 new ParseRule { Type = TokenType.And, Prefix = null, Infix = And, Precidence = Precidence.And },
                 new ParseRule { Type = TokenType.Bang, Prefix = Unary, Infix = null, Precidence = Precidence.None },
@@ -50,7 +84,7 @@ namespace Lox.Lib
                 new ParseRule { Type = TokenType.Identifier, Prefix = Variable, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.If, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.LeftBrace, Prefix = null, Infix = null, Precidence = Precidence.None },
-                new ParseRule { Type = TokenType.LeftParen, Prefix = Grouping, Infix = null, Precidence=  Precidence.None },
+                new ParseRule { Type = TokenType.LeftParen, Prefix = Grouping, Infix = Call, Precidence = Precidence.Call },
                 new ParseRule { Type = TokenType.Less, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
                 new ParseRule { Type = TokenType.LessEqual, Prefix = null, Infix = Binary, Precidence = Precidence.Comparison },
                 new ParseRule { Type = TokenType.Minus, Prefix = Unary, Infix = Binary, Precidence = Precidence.Term },
@@ -72,15 +106,21 @@ namespace Lox.Lib
                 new ParseRule { Type = TokenType.Var, Prefix = null, Infix = null, Precidence = Precidence.None },
                 new ParseRule { Type = TokenType.While, Prefix = null, Infix = null, Precidence = Precidence.None },
             };
+            #endregion
+
+            current = new Instance {
+                type = type,
+                enclosing = null,
+            };
+
         }
 
-        public bool Compile(TextWriter writer, string source, Chunk chunk)
+        internal ObjFunction Compile(TextWriter writer, string source)
         {
-
-            this.writer = writer;
-            hadError = false;
             scanner = new Scanner(source);
-            compilingChunk = chunk;
+            this.writer = writer;
+            parser.hadError = false;
+            parser.panicMode = false;
 
             Advance();
 
@@ -88,19 +128,18 @@ namespace Lox.Lib
                 Declaration();
             }
 
-            EndCompiler();
-
-            return !hadError;
+            ObjFunction fun = EndCompiler();
+            return parser.hadError ? null : fun;
         }
 
         private void AddLocal(Token name)
         {
-            if (localCount == byte.MaxValue) {
+            if (current.localCount == byte.MaxValue) {
                 Error("Too many local variables in function.");
                 return;
             }
 
-            locals[localCount++] = new Local {
+            current.locals[current.localCount++] = new Local {
                 name = name,
                 depth = -1,
             };
@@ -108,14 +147,14 @@ namespace Lox.Lib
 
         private void Advance()
         {
-            previous = current;
+            parser.previous = parser.current;
             while (true) {
-                current = scanner.ScanToken();
-                if (current.Type != TokenType.Error) {
+                parser.current = scanner.ScanToken();
+                if (parser.current.Type != TokenType.Error) {
                     break;
                 }
 
-                ErrorAtCurrent(current.Lexeme);
+                ErrorAtCurrent(parser.current.Lexeme);
             }
         }
 
@@ -123,16 +162,34 @@ namespace Lox.Lib
         {
             int endJump = EmitJump(OpCode.JumpIfFalse);
 
-            EmitJump(OpCode.Pop);
+            EmitByte(OpCode.Pop);
 
             ParsePrecidence(Precidence.And);
 
             PatchJump(endJump);
         }
 
+        private byte ArgumentList()
+        {
+            byte argumentCount = 0;
+            if (!Check(TokenType.RightParen)) {
+                do {
+                    Expression();
+                    if (argumentCount == 255) {
+                        Error("Can't have more than 255 arguments.");
+                    }
+
+                    argumentCount += 1;
+                } while (Match(TokenType.Comma));
+            }
+
+            Consume(TokenType.RightParen, "Expect ')' after arguments.");
+            return argumentCount;
+        }
+
         private void Binary(bool canAssign)
         {
-            TokenType operatorType = previous.Type;
+            TokenType operatorType = parser.previous.Type;
 
             ParseRule rule = GetRule(operatorType);
             ParsePrecidence(rule.Precidence + 1);
@@ -156,7 +213,7 @@ namespace Lox.Lib
 
         private void BeginScope()
         {
-            scopeDepth += 1;
+            current.scopeDepth += 1;
         }
 
         private void Block()
@@ -168,14 +225,20 @@ namespace Lox.Lib
             Consume(TokenType.RightBrace, "Expect '}' after block.");
         }
 
+        private void Call(bool canAssign)
+        {
+            byte argCount = ArgumentList();
+            EmitBytes(OpCode.Call, argCount);
+        }
+
         private bool Check(TokenType type)
         {
-            return current.Type == type;
+            return parser.current.Type == type;
         }
 
         private void Consume(TokenType type, string message)
         {
-            if (current.Type == type) {
+            if (parser.current.Type == type) {
                 Advance();
                 return;
             }
@@ -185,33 +248,35 @@ namespace Lox.Lib
 
         private Chunk CurrentChunk()
         {
-            return compilingChunk;
+            return current.function.chunk;
         }
 
         private void Declaration()
         {
-            if (Match(TokenType.Var)) {
+            if (Match(TokenType.Fun)) {
+                FunDeclaration();
+            } else if (Match(TokenType.Var)) {
                 VarDeclaration();
             } else {
                 Statement();
             }
 
-            if (panicMode) {
+            if (parser.panicMode) {
                 Synchronize();
             }
         }
 
         private void DeclareVariable()
         {
-            if (scopeDepth == 0) {
+            if (current.scopeDepth == 0) {
                 return;
             }
 
-            Token name = previous;
+            Token name = parser.previous;
 
-            for (int i = localCount - 1; i >= 0; i -= 1) {
-                Local local = locals[i];
-                if (local.depth != -1 && local.depth < scopeDepth) {
+            for (int i = current.localCount - 1; i >= 0; i -= 1) {
+                Local local = current.locals[i];
+                if (local.depth != -1 && local.depth < current.scopeDepth) {
                     break;
                 }
 
@@ -226,7 +291,7 @@ namespace Lox.Lib
 
         private void DefineVariable(byte global)
         {
-            if (scopeDepth > 0) {
+            if (current.scopeDepth > 0) {
                 MarkInitialized();
                 return;
             }
@@ -235,7 +300,7 @@ namespace Lox.Lib
 
         private void EmitByte(byte b)
         {
-            CurrentChunk().Add(b, previous.Line);
+            CurrentChunk().Add(b, parser.previous.Line);
         }
 
         private void EmitBytes(OpCode op, byte b2)
@@ -275,44 +340,48 @@ namespace Lox.Lib
             EmitByte((byte)(offset & 0xff));
         }
 
-
         private void EmitReturn()
         {
+            EmitByte(OpCode.Nil);
             EmitByte(OpCode.Return);
         }
 
-        private void EndCompiler()
+        private ObjFunction EndCompiler()
         {
             EmitReturn();
+            ObjFunction fun = current.function;
 
 #if DEBUG
-            if (!hadError) {
-                CurrentChunk().Disassemble(writer, "code");
+            if (!parser.hadError) {
+                CurrentChunk().Disassemble(writer, fun.name == null ? "<script>" : fun.name.Chars);
             }
 #endif
+            current = current.enclosing;
+
+            return fun;
         }
 
         private void EndScope()
         {
-            scopeDepth -= 1;
+            current.scopeDepth -= 1;
 
-            while (localCount > 0 && locals[localCount - 1].depth > scopeDepth) {
+            while (current.localCount > 0 && current.locals[current.localCount - 1].depth > current.scopeDepth) {
                 EmitByte(OpCode.Pop);
-                localCount -= 1;
+                current.localCount -= 1;
             }
         }
 
         private void Error(string message)
         {
-            ErrorAt(previous, message);
+            ErrorAt(parser.previous, message);
         }
 
         private void ErrorAt(Token token, string message)
         {
-            if (panicMode) {
+            if (parser.panicMode) {
                 return;
             }
-            panicMode = true;
+            parser.panicMode = true;
 
             writer.Write("[line {0} error", token.Line);
 
@@ -325,13 +394,13 @@ namespace Lox.Lib
             }
 
             writer.WriteLine(": {0}", message);
-            hadError = true;
+            parser.hadError = true;
 
         }
 
         private void ErrorAtCurrent(string message)
         {
-            ErrorAt(current, message);
+            ErrorAt(parser.current, message);
         }
 
         private void Expression()
@@ -344,6 +413,48 @@ namespace Lox.Lib
             Expression();
             Consume(TokenType.Semicolon, "Expect ';' after expression.");
             EmitByte(OpCode.Pop);
+        }
+
+        private void Function(FunctionType type)
+        {
+            current = new Instance {
+                type = type,
+                enclosing = current
+            };
+            current.function.name = ObjString.CopyString(parser.previous.Lexeme);
+
+            BeginScope();
+
+            Consume(TokenType.LeftParen, "Expect '(' after function name.");
+            if (!Check(TokenType.RightParen)) {
+                do {
+                    current.function.arity += 1;
+                    if (current.function.arity > 255) {
+                        ErrorAtCurrent("Can't have more than 255 parameters.");
+                    }
+
+                    byte paramConst = ParseVariable("Expect parameter name.");
+                    DefineVariable(paramConst);
+
+                } while (Match(TokenType.Comma));
+            }
+            Consume(TokenType.RightParen, "Expect ')' after parameters.");
+
+            Consume(TokenType.LeftBrace, "Expect '{' before function body.");
+            Block();
+
+            ObjFunction fun = EndCompiler();
+            EmitBytes(OpCode.Constant, MakeConstant(Value.Obj(fun)));
+
+        }
+
+        private void FunDeclaration()
+        {
+            byte global = ParseVariable("Expect function name.");
+
+            MarkInitialized();
+            Function(FunctionType.Function);
+            DefineVariable(global);
         }
 
         private void ForStatement()
@@ -433,7 +544,7 @@ namespace Lox.Lib
 
         private void Literal(bool canAssign)
         {
-            switch (previous.Type) {
+            switch (parser.previous.Type) {
                 case TokenType.False: EmitByte(OpCode.False); break;
                 case TokenType.Nil: EmitByte(OpCode.Nil); break;
                 case TokenType.True: EmitByte(OpCode.True); break;
@@ -479,7 +590,10 @@ namespace Lox.Lib
 
         private void MarkInitialized()
         {
-            locals[localCount - 1].depth = scopeDepth;
+            if (current.scopeDepth == 0) {
+                return;
+            }
+            current.locals[current.localCount - 1].depth = current.scopeDepth;
         }
 
         private bool Match(TokenType type)
@@ -493,7 +607,7 @@ namespace Lox.Lib
 
         private void Number(bool canAssign)
         {
-            double value = double.Parse(previous.Lexeme);
+            double value = double.Parse(parser.previous.Lexeme);
             EmitConstant(Value.Number(value));
         }
 
@@ -525,7 +639,7 @@ namespace Lox.Lib
         private void ParsePrecidence(Precidence precidence)
         {
             Advance();
-            Action<bool> prefixRule = GetRule(previous.Type).Prefix;
+            Action<bool> prefixRule = GetRule(parser.previous.Type).Prefix;
             if (prefixRule == null) {
                 Error("Expect expression");
                 return;
@@ -534,9 +648,9 @@ namespace Lox.Lib
             bool canAssign = precidence <= Precidence.Assignment;
             prefixRule(canAssign);
 
-            while (precidence < GetRule(current.Type).Precidence) {
+            while (precidence < GetRule(parser.current.Type).Precidence) {
                 Advance();
-                Action<bool> infixRule = GetRule(previous.Type).Infix;
+                Action<bool> infixRule = GetRule(parser.previous.Type).Infix;
                 infixRule(canAssign);
             }
 
@@ -550,11 +664,11 @@ namespace Lox.Lib
             Consume(TokenType.Identifier, errorMessage);
 
             DeclareVariable();
-            if (scopeDepth > 0) {
+            if (current.scopeDepth > 0) {
                 return 0;
             }
 
-            return IdentifierConstant(previous);
+            return IdentifierConstant(parser.previous);
         }
 
         private void PrintStatement()
@@ -566,8 +680,8 @@ namespace Lox.Lib
 
         private int ResolveLocal(Token name)
         {
-            for (int i = localCount - 1; i >= 0; i -= 1) {
-                Local local = locals[i];
+            for (int i = current.localCount - 1; i >= 0; i -= 1) {
+                Local local = current.locals[i];
                 if (name.Lexeme == local.name.Lexeme) {
                     if (local.depth == -1) {
                         Error($"Can't read local variable {name.Lexeme} in it's own initializer.");
@@ -579,6 +693,21 @@ namespace Lox.Lib
             return -1;
         }
 
+        private void ReturnStatement()
+        {
+            if (current.type == FunctionType.Script) {
+                Error("Can't return from top level code.");
+            }
+
+            if (Match(TokenType.Semicolon)) {
+                EmitReturn();
+            } else {
+                Expression();
+                Consume(TokenType.Semicolon, "Expect ';' after return value.");
+                EmitByte(OpCode.Return);
+            }
+        }
+
         private void Statement()
         {
             if (Match(TokenType.Print)) {
@@ -587,6 +716,8 @@ namespace Lox.Lib
                 ForStatement();
             } else if (Match(TokenType.If)) {
                 IfStatement();
+            } else if (Match(TokenType.Return)) {
+                ReturnStatement();
             } else if (Match(TokenType.While)) {
                 WhileStatement();
             } else if (Match(TokenType.LeftBrace)) {
@@ -600,18 +731,18 @@ namespace Lox.Lib
 
         private void String(bool canAssign)
         {
-            EmitConstant(Value.Obj(ObjString.CopyString(previous.Lexeme[1..^1])));
+            EmitConstant(Value.Obj(ObjString.CopyString(parser.previous.Lexeme[1..^1])));
         }
 
         private void Synchronize()
         {
-            panicMode = false;
+            parser.panicMode = false;
 
-            while (current.Type != TokenType.Eof) {
-                if (previous.Type == TokenType.Semicolon) {
+            while (parser.current.Type != TokenType.Eof) {
+                if (parser.previous.Type == TokenType.Semicolon) {
                     return;
                 }
-                switch (current.Type) {
+                switch (parser.current.Type) {
                     case TokenType.Class:
                     case TokenType.Fun:
                     case TokenType.Var:
@@ -631,7 +762,7 @@ namespace Lox.Lib
 
         private void Unary(bool canAssign)
         {
-            TokenType operatorType = previous.Type;
+            TokenType operatorType = parser.previous.Type;
 
             ParsePrecidence(Precidence.Unary);
 
@@ -659,7 +790,7 @@ namespace Lox.Lib
 
         private void Variable(bool canAssign)
         {
-            NamedVariable(previous, canAssign);
+            NamedVariable(parser.previous, canAssign);
         }
 
         private void WhileStatement()
@@ -683,20 +814,35 @@ namespace Lox.Lib
             public Token name;
             public int depth;
         }
+
+        internal enum FunctionType
+        {
+            Function,
+            Script,
+        }
+
+        enum Precidence
+        {
+            None,
+            Assignment,
+            Or,
+            And,
+            Equality,
+            Comparison,
+            Term,
+            Factor,
+            Unary,
+            Call,
+            Primary,
+        }
+
+        class ParseRule
+        {
+            public TokenType Type;
+            public Action<bool> Prefix;
+            public Action<bool> Infix;
+            public Precidence Precidence;
+        }
     }
 
-    enum Precidence
-    {
-        None,
-        Assignment,
-        Or,
-        And,
-        Equality,
-        Comparison,
-        Term,
-        Factor,
-        Unary,
-        Call,
-        Primary,
-    }
 }

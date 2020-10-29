@@ -5,8 +5,6 @@ using System.Text;
 
 namespace Lox.Lib
 {
-
-
     public class Value
     {
         public ValueType Type { get; private set; }
@@ -67,12 +65,17 @@ namespace Lox.Lib
         public Obj AsObj => (Obj)As;
         public ObjType ObjType => AsObj.Type;
         public ObjString AsString => (ObjString)As;
- 
+        public ObjFunction AsFunction => (ObjFunction)As;
+        public Func<int, Value[], Value> AsNative => ((ObjNative)As).Func;
+
         public bool IsNumber => Type == ValueType.Number;
         public bool IsNil => Type == ValueType.Nil;
         public bool IsBool => Type == ValueType.Bool;
         public bool IsObj => Type == ValueType.Obj;
         public bool IsString => IsObj && ObjType == ObjType.String;
+        public bool IsFunction => IsObj && ObjType == ObjType.Function;
+        public bool IsNative => IsObj && ObjType == ObjType.Native;
+
 
 
     }

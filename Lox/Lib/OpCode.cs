@@ -29,6 +29,7 @@ namespace Lox.Lib
         Jump,
         JumpIfFalse,
         Loop,
+        Call,
         Return,
     }
 }
